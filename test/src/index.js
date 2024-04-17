@@ -18,7 +18,7 @@ reportWebVitals();
 
 //defalut
 
-class Square extends React.Component {
+class Square extends Component {
   render() {
     return (
       <button className='square' onClick={function() {
