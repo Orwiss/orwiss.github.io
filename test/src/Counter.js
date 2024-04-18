@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
 
-function Counter() {
-    let [num, setNum] = useState(0)
+export default function Counter() {
+    let [num, set] = useState(0)
 
     const increase = () => {
-        setNum(prev => prev + 1)
+        set(prev => prev + 1)
         console.log('+1')
     }
 
     const decrease = () => {
-        setNum(prev => prev - 1)
+        set(prev => prev - 1)
         console.log('-1')
     }
 
@@ -33,5 +33,3 @@ function Counter() {
         </div>
     )
 }
-
-export default Counter;

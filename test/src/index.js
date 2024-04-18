@@ -6,6 +6,7 @@ import './App.css';
 import Test1 from './test';
 import reportWebVitals from './reportWebVitals';
 import Counter from './Counter';
+import Input from './Input';
 
 function Test2() {
   const style = {
@@ -24,6 +25,7 @@ export default Test2;
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
+    <Input/>
     <Counter/>
     <App/>
     <App/>
