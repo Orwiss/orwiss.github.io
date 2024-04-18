@@ -2,8 +2,10 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
+import './App.css';
 import Test1 from './test';
 import reportWebVitals from './reportWebVitals';
+import Counter from './Counter';
 
 function Test2() {
   const style = {
@@ -22,6 +24,7 @@ export default Test2;
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
+    <Counter/>
     <App/>
     <App/>
     <App/>
