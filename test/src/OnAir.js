@@ -45,13 +45,13 @@ function Project({project}) {
     const itemStyle = {
         display: 'inline-block',
         padding: '30px',
-        margin: '10px auto',
+        margin: '10px 0',
         border: '1px solid black',
         borderRadius: '24pt'
     }
 
     return(
-        <div>
+        <div style={{display: 'grid', placeItems: 'center'}}>
             <div style={itemStyle}>
                 <h3 style={{margin: '2px 0'}}>{project.name}</h3>
                 <span>날짜: {project.date}</span>

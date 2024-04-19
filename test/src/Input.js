@@ -13,7 +13,8 @@ export default function Input() {
     }
 
     const inputStyle = {
-        width: '400px',
+        width: '80%',
+        maxWidth: '400px',
         height: '40px'
     }
 
