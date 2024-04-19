@@ -17,6 +17,14 @@ export default function OnAir() {
         {
             name: 'Pagoda: Rate your Goal',
             date: '2024.05.13'
+        },
+        {
+            name: 'Open Mine',
+            date: '2024.03.11'
+        },
+        {
+            name: 'Pagoda',
+            date: '2024.03.04'
         }
     ]
 
@@ -24,18 +32,30 @@ export default function OnAir() {
         <div>
             <hr style={{marginTop: '30px'}}></hr>
             <h1 style={{marginBottom: '60px'}}>2024 참여 프로젝트</h1>
-            {projectList.map((project, index) => (
-                <Project project={project} key={index}/>
-            ))}
+            <div style={{columnCount: '2'}}>
+                {projectList.map((project, index) => (
+                    <Project project={project} key={index}/>
+                ))}
+            </div>
         </div>
     )
 }
 
 function Project({project}) {
+    const itemStyle = {
+        display: 'inline-block',
+        padding: '30px',
+        margin: '10px auto',
+        border: '1px solid black',
+        borderRadius: '24pt'
+    }
+
     return(
         <div>
-            <h3>프로젝트명: {project.name}</h3>
-            <span>날짜: {project.date}</span>
+            <div style={itemStyle}>
+                <h3 style={{margin: '2px 0'}}>{project.name}</h3>
+                <span>날짜: {project.date}</span>
+            </div>
         </div>
     )
 }
