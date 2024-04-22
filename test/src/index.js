@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
+import Title from './Title';
 import App from './App';
 import './App.css';
 import Test1 from './test';
@@ -26,7 +27,8 @@ export default Test2;
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
-    <h1 style={{fontSize: '64pt', margin: '20px 0 0 40px'}}>Sunghun Park</h1>
+    {/* <h1 style={{fontSize: '64pt', marginTop: '20px'}}>Sunghun Park</h1> */}
+    <Title/>
     <Input/>
     <Counter/>
     <App/>
