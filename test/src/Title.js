@@ -6,33 +6,33 @@ export default function Title() {
     useEffect(() => {
         const interval = setInterval(() => {
             setNum(prev => {
-                if (prev >= 40) {
+                if (prev >= 39) {
                     clearInterval(interval)
                     return prev
                 } else {
-                    return prev + 0.1
+                    return prev + (40 - prev) * 0.01
                 }
             })
         }, 1)
         return() => clearInterval(interval)
     }, [])
 
-    const bound = {
-        height: '100px',
+    const box = {
+        height: '100%',
         display: 'flex',
-        alignItems: 'center'
+        alignItems: 'center',
     }
 
     const text = {
         textAlign: 'center',
-        fontSize: `${36 - num / 4}pt`,
+        fontSize: `clamp(32pt, 3vw, 64pt)`,
         fontWeight: 'bold',
         letterSpacing: `${num}px`,
         margin: 'auto'
     }
     
     return(
-        <div style={bound}>
+        <div style={box}>
             <p style={text}>SUNGHUN PARK</p>
         </div>
     )
