@@ -6,12 +6,8 @@ export default function Title() {
     useEffect(() => {
         const interval = setInterval(() => {
             setNum(prev => {
-                if (prev >= 39) {
-                    clearInterval(interval)
-                    return prev
-                } else {
-                    return prev + (40 - prev) * 0.01
-                }
+                if (prev >= 39) return prev
+                else return prev + (40 - prev) * 0.01
             })
         }, 1)
         return() => clearInterval(interval)
@@ -20,7 +16,7 @@ export default function Title() {
     const box = {
         height: '100%',
         display: 'flex',
-        alignItems: 'center',
+        alignItems: 'center'
     }
 
     const text = {
