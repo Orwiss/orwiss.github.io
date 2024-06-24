@@ -1,17 +1,25 @@
-import React, {useState, useEffect} from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 
 export default function Title() {
     const [num, setNum] = useState(0)
+    const title = useRef(null)
+    const mobile = /Android|BlackBerry|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent)
 
     useEffect(() => {
+        const max = mobile? 18:30
+
         const interval = setInterval(() => {
             setNum(prev => {
-                if (prev >= 30) return prev
-                else return prev + (30 - prev) * 0.01
+                const currentWidth = title.current? title.current.offsetWidth:0
+                if (prev >= max || currentWidth > window.innerWidth - 20) {
+                    
+                    return prev
+                }
+                else return prev + (max - prev) * 0.01
             })
         }, 1)
         return() => clearInterval(interval)
-    }, [])
+    }, [mobile])
 
     const box = {
         height: '100%',
@@ -19,17 +27,20 @@ export default function Title() {
         alignItems: 'center'
     }
 
-    const text = {
+    const textStyle = {
         textAlign: 'center',
-        fontSize: `clamp(32pt, 3vw, 64pt)`,
+        fontSize: 'clamp(32pt, 6vw, 64pt)',
         fontWeight: 'bold',
+        whiteSpace: 'pre-wrap',
         letterSpacing: `${num}px`,
         margin: 'auto'
     }
+
+    const text = mobile? 'SUNGHUN\nPARK':'SUNGHUN PARK'
     
     return(
         <div style={box}>
-            <p style={text}>SUNGHUN PARK</p>
+            <p style={textStyle} ref={title}>{text}</p>
         </div>
     )
 }
