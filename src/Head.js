@@ -18,7 +18,7 @@ export default function Head() {
 
     return(
         <div style={box}>
-            <h2 style={logo}><a href='#!'>SH</a></h2>
+            <h2 style={logo}><a href='#'>SH</a></h2>
             <Nav/>
         </div>
     )
