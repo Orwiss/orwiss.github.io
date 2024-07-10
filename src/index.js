@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import './index.css'
+import App from './App'
 import Title from './Title'
 import Head from './Head'
 import reportWebVitals from './reportWebVitals'
@@ -23,7 +24,7 @@ export default function Main() {
 const container = ReactDOM.createRoot(document.getElementById('container'));
 container.render(
   <React.StrictMode>
-    <Main/>
+    <App/>
   </React.StrictMode>
 )
 

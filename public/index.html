@@ -51,17 +51,5 @@
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="container"></div>
-    
-    <script>
-      const ip = "121.183.176.36"
-      const port = "80"
-      const socket = io(`http://${ip}:${port}`, {
-          query: {
-              clientId: 'Web'
-          }
-      })
-
-      socket.on('connect', () => { console.log('Socket Connected') })
-    </script>
   </body>
 </html>

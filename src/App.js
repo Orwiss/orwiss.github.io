@@ -1,11 +1,17 @@
-import React, {Component} from 'react'
+import React from 'react'
+import { BrowserRouter as Router, Route, Routes} from 'react-router-dom'
+import Jungang from './pages/Jungang'
+import Main from '.';
 
-export default class App extends Component {
-  render() {
-    return (
-      <div className="main-container">
-        <h1>Hello!</h1>
-      </div>
-    )
-  }
+const App = () => {
+  return (
+    <Router>
+      <Routes>
+      <Route path="/" element={<Main/>} />
+      <Route path="/jungang" element={<Jungang/>} />
+      </Routes>
+    </Router>
+  );
 }
+
+export default App
