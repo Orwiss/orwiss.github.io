@@ -1,4 +1,5 @@
 import React from 'react'
+// import { Link } from 'react-router-dom'
 import styled from 'styled-components'
 
 const Items = styled.div`
@@ -19,9 +20,9 @@ export default function Nav() {
 
     return(
         <div style={box}>
-            <Items as='a' href='#'>About</Items>
-            <Items as='a' href='#'>Projects</Items>
-            <EndItem as='a' href='#'>Contact</EndItem>
+            <Items as='a' href='/about'>About</Items>
+            <Items as='a' href='.'>Projects</Items>
+            <EndItem as='a' href='.'>Contact</EndItem>
         </div>
     )
 }

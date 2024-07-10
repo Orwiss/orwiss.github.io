@@ -15,7 +15,6 @@ export default function Main() {
 
   return (
     <div className='bg' style={bg}>
-        <Head/>
         <Title/>
     </div>
   )
@@ -24,6 +23,7 @@ export default function Main() {
 const container = ReactDOM.createRoot(document.getElementById('container'));
 container.render(
   <React.StrictMode>
+    <Head/>
     <App/>
   </React.StrictMode>
 )
