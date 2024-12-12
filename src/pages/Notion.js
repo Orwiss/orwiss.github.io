@@ -1,10 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from 'react';
 
 const NotionPage = ({ pageId }) => {
   const [notionData, setNotionData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // 페이지 데이터 가져오기
   useEffect(() => {
     const fetchNotionData = async () => {
       try {
@@ -27,7 +26,6 @@ const NotionPage = ({ pageId }) => {
 
   if (loading) return <div>Loading...</div>;
 
-  // Notion 페이지 데이터를 표시
   return (
     <div>
       <h1>Notion Page</h1>
@@ -37,6 +35,3 @@ const NotionPage = ({ pageId }) => {
 };
 
 export default NotionPage;
-
-
-//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
