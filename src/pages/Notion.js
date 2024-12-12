@@ -1,35 +1,42 @@
-import React, { useEffect, useState } from 'react';
-import { Client } from '@notionhq/client';
+import React, { useEffect, useState } from "react";
 
-const NotionAPIComponent = ({ pageId }) => {
-  const [pageContent, setPageContent] = useState(null);
+const NotionPage = ({ pageId }) => {
+  const [notionData, setNotionData] = useState(null);
+  const [loading, setLoading] = useState(true);
 
+  // 페이지 데이터 가져오기
   useEffect(() => {
-    const notion = new Client({ auth: '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' });
-
-    async function fetchPage() {
+    const fetchNotionData = async () => {
       try {
-        const response = await notion.blocks.children.list({ block_id: pageId });
-        setPageContent(response.results);
+        const response = await fetch(`/api/notion?pageId=${6d45f80728b24b719db9c224bd68d6e1}`);
+        if (response.ok) {
+          const data = await response.json();
+          setNotionData(data);
+        } else {
+          throw new Error("Failed to fetch Notion page data");
+        }
       } catch (error) {
-        console.error('Failed to fetch Notion content:', error);
+        console.error(error);
+      } finally {
+        setLoading(false);
       }
-    }
+    };
 
-    fetchPage();
+    fetchNotionData();
   }, [pageId]);
 
-  if (!pageContent) return <div>Loading...</div>;
+  if (loading) return <div>Loading...</div>;
 
+  // Notion 페이지 데이터를 표시
   return (
-    <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
-      {pageContent.map((block) => (
-        <div key={block.id}>
-          <p>{block.type}</p>
-        </div>
-      ))}
+    <div>
+      <h1>Notion Page</h1>
+      <pre>{JSON.stringify(notionData, null, 2)}</pre>
     </div>
   );
 };
 
-export default NotionAPIComponent;
+export default NotionPage;
+
+
+//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
