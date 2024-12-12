@@ -71,7 +71,7 @@ export default function Main() {
   return (
     <div className="bg" style={{ position: 'relative', height: '100vh', color: 'white' }}>
       <iframe 
-        src="/sketches/sketch1" 
+        src={`${process.env.PUBLIC_URL}/sketches/sketch1`}
         style={iframeStyle} 
         title="background sketch" 
       />
