@@ -9,8 +9,30 @@ import Link from './pages/Link'
 import Head from './Head'
 import reportWebVitals from './reportWebVitals'
 
+const FadeContainer = ({ fadeState, children }) => {
+  const fadeStyles = {
+    transition: 'opacity 0.5s ease',
+    opacity: fadeState === 'fade-out' ? 0 : 1,
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    pointerEvents: 'none'
+  };
+
+  return <div style={fadeStyles}>{children}</div>;
+};
+
 export default function Main() {
   const [level, setLevel] = useState(0);
+  const [fadeState, setFadeState] = useState('fade-in');
+  const [currentComponent, setCurrentComponent] = useState(<Title />);
+
+  const components = [
+    <Title />,
+    <About />,
+    <Notion pageId="6d45f80728b24b719db9c224bd68d6e1" />,
+    <Link />,
+  ];
 
   const iframeStyle = {
     position: 'absolute',
@@ -60,13 +82,24 @@ export default function Main() {
     bottom: '100px',
     right: '100px'
   };
-  
-  const handleLeftClick = () => {
-    setLevel(prev => (prev - 1 < 0 ? 3: prev - 1));
+
+  const changeComponent = (newLevel) => {
+    setFadeState('fade-out');
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        setLevel(newLevel);
+        setCurrentComponent(components[newLevel]);
+        setFadeState('fade-in');
+      }, 500); // Matches the fade transition duration
+    });
   };
-  
+
+  const handleLeftClick = () => {
+    changeComponent((level - 1 + components.length) % components.length);
+  };
+
   const handleRightClick = () => {
-    setLevel(prev => ((prev + 1) % 4));
+    changeComponent((level + 1) % components.length);
   };
 
   return (
@@ -77,10 +110,7 @@ export default function Main() {
         title="background sketch" 
       />
       <div style={overlayStyle}></div>
-      {level === 0 && <Title/>}
-      {level === 1 && <About/>}
-      {level === 2 && <Notion pageId="6d45f80728b24b719db9c224bd68d6e1" />}
-      {level === 3 && <Link/>}
+      <FadeContainer fadeState={fadeState}>{currentComponent}</FadeContainer>
       <div style={leftButtonStyle} onClick={handleLeftClick}>←</div>
       <div style={rightButtonStyle} onClick={handleRightClick}>→</div>
     </div>
