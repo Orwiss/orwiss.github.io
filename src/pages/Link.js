@@ -23,8 +23,8 @@ const Button = styled.a`
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: rgba(255, 255, 255, 0.5);
-    backdrop-filter: blur(10px);
+    background-color: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(12px);
     border-radius: 80px;
     width: clamp(200px, 40%, 360px);
     height: 80px;
@@ -37,7 +37,7 @@ const Button = styled.a`
     box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
     transition: transform 0.2s ease, box-shadow 0.2s ease;
     position: relative;
-    z-index: 1;
+    z-index: 10;
 
     &:hover {
         transform: translateY(-4px);
@@ -65,7 +65,8 @@ const linkBox = {
     alignItems: 'center',
     minHeight: '100vh',
     flexDirection: 'column',
-    zIndex: '10'
+    zIndex: '10',
+    pointerEvents: 'auto'
 }
 
 const Link = () => {
@@ -73,8 +74,8 @@ const Link = () => {
         <div style={linkBox}>
         {links.map((link) => (
             <Button key={link.name} href={link.url} target="_blank">
-            <img src={link.icon} alt={link.name} />
-            <span>{link.name}</span>
+                <img src={link.icon} alt={link.name} />
+                <span>{link.name}</span>
             </Button>
         ))}
         </div>

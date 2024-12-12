@@ -22,7 +22,7 @@ function draw() {
 }
 
 function windowResized() {
-  resizeCavnas(windowWidth, windowHeight)
+  resizeCanvas(windowWidth, windowHeight)
 }
 
 class Typo {
