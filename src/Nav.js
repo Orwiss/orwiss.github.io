@@ -4,7 +4,7 @@ import styled from 'styled-components'
 
 const Items = styled.div`
     font-weight: light;
-    font-size: 12pt;
+    font-size: 16pt;
 `
 
 const EndItem = styled(Items)`
@@ -13,7 +13,7 @@ const EndItem = styled(Items)`
 
 export default function Nav() {
     const box = {
-        width: 'clamp(280px, 24%, 480px)',
+        width: 'clamp(280px, 32%, 520px)',
         display: 'flex',
         justifyContent: 'space-between'
     }
