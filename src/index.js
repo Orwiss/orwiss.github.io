@@ -24,11 +24,12 @@ const FadeContainer = ({ fadeState, children }) => {
 
 export default function Main() {
   const [level, setLevel] = useState(0);
+  const [overlayOpacity, setOverlayOpacity] = useState(1);
   const [fadeState, setFadeState] = useState('fade-in');
-  const [currentComponent, setCurrentComponent] = useState(<Title />);
+  const [currentComponent, setCurrentComponent] = useState(<Title titleText="ASCII Wave" fadeout={() => setOverlayOpacity(0)}/>);
 
   const components = [
-    <Title />,
+    <Title titleText="ASCII Wave" fadeout={() => setOverlayOpacity(0)}/>,
     <About />,
     <Notion pageId="6d45f80728b24b719db9c224bd68d6e1" />,
     <Link />,
@@ -51,7 +52,9 @@ export default function Main() {
     left: 0,
     width: '100%',
     height: '100%',
-    backgroundColor: `rgba(0, 0, 0, ${level === 2 ? 1 : 0.5})`,
+    backgroundColor: 'black',
+    opacity: level === 2 ? 1 : overlayOpacity == 0 ? 0 : 0.5,
+    transition: 'opacity 2s ease-out',
     zIndex: 1,
     pointerEvents: 'none'
   };
@@ -96,10 +99,12 @@ export default function Main() {
 
   const handleLeftClick = () => {
     changeComponent((level - 1 + components.length) % components.length);
+    setOverlayOpacity(1);
   };
 
   const handleRightClick = () => {
     changeComponent((level + 1) % components.length);
+    setOverlayOpacity(1);
   };
 
   return (
@@ -109,7 +114,7 @@ export default function Main() {
         style={iframeStyle} 
         title="background sketch" 
       />
-      <div style={overlayStyle}></div>
+      <div style={overlayStyle}></div >
       <FadeContainer fadeState={fadeState}>{currentComponent}</FadeContainer>
       <div style={leftButtonStyle} onClick={handleLeftClick}>←</div>
       <div style={rightButtonStyle} onClick={handleRightClick}>→</div>
