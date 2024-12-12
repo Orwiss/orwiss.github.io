@@ -38,6 +38,7 @@ const Button = styled.a`
     transition: transform 0.2s ease, box-shadow 0.2s ease;
     position: relative;
     z-index: 10;
+    pointer-events: auto;
 
     &:hover {
         transform: translateY(-4px);
@@ -65,8 +66,7 @@ const linkBox = {
     alignItems: 'center',
     minHeight: '100vh',
     flexDirection: 'column',
-    zIndex: '10',
-    pointerEvents: 'auto'
+    zIndex: '10'    
 }
 
 const Link = () => {
