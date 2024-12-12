@@ -8,7 +8,7 @@ const NotionPage = ({ pageId }) => {
   useEffect(() => {
     const fetchNotionData = async () => {
       try {
-        const response = await fetch(`/api/notion?pageId=${6d45f80728b24b719db9c224bd68d6e1}`);
+        const response = await fetch(`/api/notion?pageId=${pageId}`);
         if (response.ok) {
           const data = await response.json();
           setNotionData(data);
