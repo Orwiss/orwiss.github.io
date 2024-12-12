@@ -21,6 +21,10 @@ function draw() {
   ascii.forEach (txt => txt.display(createVector(mouseX, mouseY)))
 }
 
+function windowResized() {
+  resizeCavnas(windowWidth, windowHeight)
+}
+
 class Typo {
   constructor(x, y) {
     this.x = x

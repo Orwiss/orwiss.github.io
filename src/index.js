@@ -5,6 +5,7 @@ import App from './App'
 import About from './pages/About'
 import Title from './pages/Title'
 import Notion from './pages/Notion'
+import Link from './pages/Link'
 import Head from './Head'
 import reportWebVitals from './reportWebVitals'
 
@@ -79,11 +80,9 @@ export default function Main() {
       {level === 0 && <Title/>}
       {level === 1 && <About/>}
       {level === 2 && <Notion pageId="6d45f80728b24b719db9c224bd68d6e1" />}
+      {level === 3 && <Link/>}
       <div style={leftButtonStyle} onClick={handleLeftClick}>←</div>
       <div style={rightButtonStyle} onClick={handleRightClick}>→</div>
-      <div style={{ position: 'absolute', bottom: '100px', right: '50%', transform: 'translateX(50%)', zIndex: 2 }}>
-        Level: {level}
-      </div>
     </div>
   );
 }
