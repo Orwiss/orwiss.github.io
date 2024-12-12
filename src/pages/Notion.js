@@ -1,33 +1,35 @@
 import React, { useEffect, useState } from 'react';
+import { Client } from '@notionhq/client';
 
-const Notion = () => {
-  const [data, setData] = useState(null);
+const NotionAPIComponent = ({ pageId }) => {
+  const [pageContent, setPageContent] = useState(null);
 
   useEffect(() => {
-    const fetchData = async () => {
-      const response = await fetch('https://api.notion.com/v1/pages/6d45f80728b24b719db9c224bd68d6e1', {
-        headers: {
-          'Authorization': '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',
-          'Notion-Version': '2022-06-28'
-        }
-      });
-      const result = await response.json();
-      setData(result);
-    };
+    const notion = new Client({ auth: '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' });
 
-    fetchData();
-  }, []);
+    async function fetchPage() {
+      try {
+        const response = await notion.blocks.children.list({ block_id: pageId });
+        setPageContent(response.results);
+      } catch (error) {
+        console.error('Failed to fetch Notion content:', error);
+      }
+    }
 
-  if (!data) {
-    return <div>Loading...</div>;
-  }
+    fetchPage();
+  }, [pageId]);
+
+  if (!pageContent) return <div>Loading...</div>;
 
   return (
-    <div>
-      <h1>{data.properties.title.title[0].text.content}</h1>
-      {/* 데이터를 원하는 형식으로 렌더링 */}
+    <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
+      {pageContent.map((block) => (
+        <div key={block.id}>
+          <p>{block.type}</p>
+        </div>
+      ))}
     </div>
   );
 };
 
-export default Notion;
+export default NotionAPIComponent;

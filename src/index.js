@@ -78,7 +78,7 @@ export default function Main() {
       <div style={overlayStyle}></div>
       {level === 0 && <Title/>}
       {level === 1 && <About/>}
-      {level === 2 && <Notion/>}
+      {level === 2 && <Notion pageId="6d45f80728b24b719db9c224bd68d6e1" />}
       <div style={leftButtonStyle} onClick={handleLeftClick}>←</div>
       <div style={rightButtonStyle} onClick={handleRightClick}>→</div>
       <div style={{ position: 'absolute', bottom: '100px', right: '50%', transform: 'translateX(50%)', zIndex: 2 }}>
