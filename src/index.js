@@ -22,14 +22,20 @@ const FadeContainer = ({ fadeState, children }) => {
   return <div style={fadeStyles}>{children}</div>;
 };
 
+const projects = [
+  'ASCII Wave',
+  'Magnetic Packing'
+]
+const projectNum = Math.floor(Math.random() * 2)
+
 export default function Main() {
   const [level, setLevel] = useState(0);
   const [overlayOpacity, setOverlayOpacity] = useState(1);
   const [fadeState, setFadeState] = useState('fade-in');
-  const [currentComponent, setCurrentComponent] = useState(<Title titleText="ASCII Wave" fadeout={() => setOverlayOpacity(0)}/>);
+  const [currentComponent, setCurrentComponent] = useState(<Title titleText={projects[projectNum]} fadeout={() => setOverlayOpacity(0)}/>);
 
   const components = [
-    <Title titleText="ASCII Wave" fadeout={() => setOverlayOpacity(0)}/>,
+    <Title titleText={projects[projectNum]} fadeout={() => setOverlayOpacity(0)}/>,
     <About />,
     <Notion pageId="6d45f80728b24b719db9c224bd68d6e1" />,
     <Link />,
@@ -53,7 +59,7 @@ export default function Main() {
     width: '100%',
     height: '100%',
     backgroundColor: 'black',
-    opacity: level === 2 ? 1 : overlayOpacity == 0 ? 0 : 0.8,
+    opacity: level === 2 ? 1 : overlayOpacity === 0 ? 0 : 0.8,
     transition: 'opacity 2s ease-out',
     zIndex: 1,
     pointerEvents: 'none'
@@ -109,8 +115,9 @@ export default function Main() {
 
   return (
     <div className="bg" style={{ position: 'relative', height: '100vh', color: 'white' }}>
-      <iframe 
-        src={`${process.env.PUBLIC_URL}/sketches/sketch1/index.html`}
+      <iframe
+        key={`project-${projectNum + 1}`}
+        src={`${process.env.PUBLIC_URL}/sketches/sketch${projectNum + 1}/index.html`}
         style={iframeStyle} 
         title="background sketch" 
       />

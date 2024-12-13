@@ -50,9 +50,9 @@ class Typo {
     //fill((this.txt * 4) % 360, 100, 100)
     fill(paletteLerp([
       ['#00FF33', 0],
-      ['#F2B807', 0.33],
-      ['#F20746', 0.67],
-      //['#153250', 0.75],
+      ['#FF7100', 0.33],
+      ['#00FFD9', 0.67],
+      ['#F4C200', 0.75],
       ['#00FF33', 1]
     ], (this.txt - 33) / 100 % 1))
     text(char(this.txt), this.x, this.y)
