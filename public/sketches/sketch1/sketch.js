@@ -2,7 +2,7 @@ let div = 20, ascii = []
 
 function setup() {
   createCanvas(windowWidth, windowHeight)
-  colorMode(HSB)
+  //colorMode(HSB)
   textFont('Noto Sans')
   textAlign(CENTER, CENTER)
   textSize(56)
@@ -47,7 +47,14 @@ class Typo {
     }
     else this.txt = this.num
     
-    fill((this.txt * 4) % 360, 100, 100)
+    //fill((this.txt * 4) % 360, 100, 100)
+    fill(paletteLerp([
+      ['#00FF33', 0],
+      ['#F2B807', 0.33],
+      ['#F20746', 0.67],
+      //['#153250', 0.75],
+      ['#00FF33', 1]
+    ], (this.txt - 33) / 100 % 1))
     text(char(this.txt), this.x, this.y)
   }
 }

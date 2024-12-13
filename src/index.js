@@ -53,7 +53,7 @@ export default function Main() {
     width: '100%',
     height: '100%',
     backgroundColor: 'black',
-    opacity: level === 2 ? 1 : overlayOpacity == 0 ? 0 : 0.5,
+    opacity: level === 2 ? 1 : overlayOpacity == 0 ? 0 : 0.8,
     transition: 'opacity 2s ease-out',
     zIndex: 1,
     pointerEvents: 'none'
