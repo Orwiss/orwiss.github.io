@@ -18,15 +18,15 @@ const About = () => {
     'Projection Mapping',
   ];
 
-  const skills = [
-    'p5.js',
-    'Touchdesigner',
-    'Unity',
-    'Network',
-    'Arduino',
-    'Web',
-    'Ableton Live',
-  ];
+  // const skills = [
+  //   'p5.js',
+  //   'Touchdesigner',
+  //   'Unity',
+  //   'Network',
+  //   'Arduino',
+  //   'Web',
+  //   'Ableton Live',
+  // ];
 
   const ScrollItems = (items: string[]) => {
     const extendedItems: string[] = [];

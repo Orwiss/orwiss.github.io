@@ -1,4 +1,5 @@
 import React from 'react';
+import Image from 'next/image';
 
 type LinkType = {
   name: string;
@@ -35,7 +36,7 @@ const Link = () => {
           rel="noopener noreferrer"
           className="flex items-center justify-center bg-white bg-opacity-60 backdrop-blur-sm rounded-full w-[clamp(200px,40%,360px)] h-20 text-black text-lg font-bold my-8 text-center shadow-lg transition-transform transform hover:translate-y-[-4px] hover:shadow-2xl active:text-black pointer-events-auto"
         >
-          <img
+          <Image
             src={link.icon}
             alt={link.name}
             className="w-auto h-10 mr-2"
