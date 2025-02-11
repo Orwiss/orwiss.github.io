@@ -9,10 +9,9 @@ export default function Title({ titleText, blackoff }: TitleProps) {
   const [num, setNum] = useState(0);
   const [opacity, setOpacity] = useState(1);
   const title = useRef<HTMLParagraphElement | null>(null);
-  const mobile = /Android|BlackBerry|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent);
 
   useEffect(() => {
-    const max = mobile ? 18 : 30;
+    const max = 30;
 
     const interval = setInterval(() => {
       setNum((prev) => {
@@ -31,7 +30,7 @@ export default function Title({ titleText, blackoff }: TitleProps) {
     }, 1);
 
     return () => clearInterval(interval);
-  }, [mobile, opacity]);
+  }, [opacity]);
 
   useEffect(() => {
     if (opacity === 0 && blackoff) {
