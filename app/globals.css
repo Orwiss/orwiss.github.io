@@ -16,8 +16,16 @@
   }
 }
 
+html {
+  scrollbar-width: none;
+}
+
 body {
   color: var(--foreground);
   background: var(--background);
   font-family: 'Pretendard Variable', sans-serif;
+}
+
+::-webkit-scrollbar {
+  display: none;
 }

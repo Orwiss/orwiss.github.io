@@ -51,11 +51,11 @@ const About = () => {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center overflow-hidden w-full h-full text-2xl text-white pointer-events-none">
-      <h1 className="text-6xl font-bold">박성훈</h1>
+    <div className="flex flex-col py-32 items-center overflow-hidden w-full h-full text-2xl text-white overflow-y-scroll pointer-events-auto">
+      <h1 className="text-6xl font-bold ">박성훈</h1>
       <p className="text-3xl">2000.09.25</p>
 
-      <div className="flex my-12 whitespace-nowrap">
+      <div className="flex my-20 whitespace-nowrap">
         <ScrollGroups items={interests}/>
         <ScrollGroups items={interests}/>
       </div>
