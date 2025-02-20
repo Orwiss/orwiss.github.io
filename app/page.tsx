@@ -20,7 +20,7 @@ export default function Home() {
   const components = [
     <Title key={0} titleText={projectNum !== null? projects[projectNum]:''} blackoff={blackOff}/>, 
     <About key={1}/>, 
-    <Projects key={2} pageId="6d45f80728b24b719db9c224bd68d6e1"/>, 
+    <Projects key={2}/>, 
     <LinkPage key={3}/>
   ];
 
