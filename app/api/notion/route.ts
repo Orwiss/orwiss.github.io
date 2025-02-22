@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-const { Client } = require("@notionhq/client"); 
+import { Client } from "@notionhq/client";
 
 const NOTION_API_KEY = process.env.NOTION_API_KEY;
-const NOTION_DB_ID = process.env.NOTION_TEMP_DB_ID;
+const NOTION_DB_ID = process.env.NOTION_TEMP_DB_ID as string;
 const notion = new Client({ auth: NOTION_API_KEY });
 
 export async function GET(request: Request) {

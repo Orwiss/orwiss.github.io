@@ -1,39 +1,32 @@
-import React from 'react';
+import React from "react";
 
-interface ButtonProps {
+interface NavProps {
   level: number;
   pages: number;
   changeComponent: (newLevel: number) => void;
-  /*setOverlayOpacity: (opacity: number) => void;*/
+  direction: "left" | "right";
 }
 
-const Nav: React.FC<ButtonProps> = ({ level, pages, changeComponent/*, setOverlayOpacity*/ }) => {
-  const handleLeftClick = () => {
-    changeComponent((level - 1 + pages) % pages);
-    //setOverlayOpacity(1);
-  };
-
-  const handleRightClick = () => {
-    changeComponent((level + 1) % pages);
-    //setOverlayOpacity(1);
+const NavButton: React.FC<NavProps> = ({ level, pages, changeComponent, direction }) => {
+  const handleClick = () => {
+    const newLevel = direction === "left" 
+      ? (level - 1 + pages) % pages 
+      : (level + 1) % pages;
+      
+    changeComponent(newLevel);
   };
 
   return (
-    <div>
-      <div
-        className="absolute bottom-[100px] left-[100px] w-[100px] h-[100px] rounded-full border-4 border-white hover:bg-white hover:text-black flex items-center justify-center text-[48pt] cursor-pointer z-10 transition-colors duration-300"
-        onClick={handleLeftClick}
+    <div
+        className={`absolute ${direction === "left" ? "left-[4%]" : "right-[4%]"} bottom-[100px]
+        w-[80px] h-[80px] xl:w-[100px] xl:h-[100px] rounded-full border-4 border-white  font-semibold
+        hover:bg-white hover:text-black flex items-center justify-center z-10
+        text-5xl xl:text-6xl transition-colors duration-300 pointer-events-auto select-none`}
+        onClick={handleClick}
       >
-        ←
-      </div>
-      <div
-        className="absolute bottom-[100px] right-[100px] w-[100px] h-[100px] rounded-full border-4 border-white hover:bg-white hover:text-black flex items-center justify-center text-[48pt] cursor-pointer z-10 transition-colors duration-300"
-        onClick={handleRightClick}
-      >
-        →
-      </div>
+      {direction === "left" ? "←" : "→"}
     </div>
   );
 };
 
-export default Nav;
+export default NavButton;
