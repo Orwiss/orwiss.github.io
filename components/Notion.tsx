@@ -70,7 +70,7 @@ export default function Projects() {
     <div className="flex justify-center h-full overflow-hidden">
       <div className="w-[80vw] min-h-screen flex flex-col p-6 overflow-y-scroll">
         {selectedPage ? (
-          <div className="w-full flex flex-col justify-center bg-white/20 backdrop-blur-sm rounded-2xl p-6 text-white overflow-y-scroll pointer-events-auto">
+          <div className="w-full flex flex-col bg-white/20 backdrop-blur-sm rounded-2xl p-6 text-white overflow-y-scroll pointer-events-auto">
             <button
               className="mb-4 text-lg underline hover:text-gray-300 transition"
               onClick={() => setSelectedPage(null)}
