@@ -1,18 +1,16 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { Client } from "@notionhq/client";
 
 const NOTION_API_KEY = process.env.NOTION_API_KEY;
 const notion = new Client({ auth: NOTION_API_KEY });
 
-export async function GET(request: Request, { params }: { params: { pageId: string }}) {
-  const page_id = params.pageId;
+export async function GET(request: NextRequest, context: { params: { blockId: string }}) {
+  const block_id = context.params.blockId;
 
   try {
-    const pageResponse = notion.pages.retrieve({ page_id: page_id });
-    const blocksResponse = await notion.blocks.children.list({ block_id: page_id });
+    const blocksResponse = await notion.blocks.children.list({ block_id: block_id });
 
     return NextResponse.json({
-      page: pageResponse,
       blocks: blocksResponse.results,
     });
   } catch (error) {
