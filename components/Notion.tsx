@@ -13,6 +13,7 @@ type RichText = {
 
 type PageProperties = {
   이름: { title: RichText[] };
+  "날짜"?: { date: { start: string } };
   "카테고리": { multi_select: MultiSelectTag[] };
   "사용 도구"?: { multi_select: MultiSelectTag[] };
   참여자?: { rich_text: RichText[] };
@@ -30,6 +31,8 @@ type Block = {
   paragraph?: { rich_text: RichText[] };
   image?: { file: { url: string }; caption?: string };
   video?: { url: string };
+  link_preview?: { url: string };
+  bookmark?: { url: string };
 };
 
 export default function Projects() {
@@ -71,12 +74,7 @@ export default function Projects() {
       <div className="w-[80vw] min-h-screen flex flex-col p-6 overflow-y-scroll">
         {selectedPage ? (
           <div className="w-full flex flex-col bg-white/20 backdrop-blur-sm rounded-2xl p-6 text-white overflow-y-scroll pointer-events-auto">
-            <button
-              className="mb-4 text-lg underline hover:text-gray-300 transition"
-              onClick={() => setSelectedPage(null)}
-            >
-              ← 돌아가기
-            </button>
+            <button className="mb-4 text-lg underline hover:text-gray-300 transition" onClick={() => setSelectedPage(null)}> ← 돌아가기 </button>
             <h2 className="text-3xl font-bold mb-3">
               {selectedPage.properties.이름.title[0]?.plain_text || "No Title"}
             </h2>
@@ -118,6 +116,18 @@ export default function Projects() {
                           Your browser does not support the video tag.
                         </video>
                       );
+                    case "link_preview":
+                      return (
+                        <a key={block.id} href={block.link_preview?.url || ""}>
+                          <p className="text-lg font-bold underline">{block.link_preview?.url}</p>
+                        </a>
+                      );
+                    case "bookmark":
+                      return (
+                        <a key={block.id} href={block.bookmark?.url || ""}>
+                          <p className="text-lg font-bold underline">{block.bookmark?.url}</p>
+                        </a>
+                      );
                     default:
                       return null;
                   }
@@ -142,12 +152,23 @@ export default function Projects() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-8 w-full mb-20 pointer-events-auto">
-              {filteredData.length > 0 ? (
-                filteredData.map((item) => (
+            {filteredData.length > 0 ? (
+              filteredData
+                .sort((a, b) => {
+                  const dateA = a.properties["날짜"]?.date?.start
+                    ? new Date(a.properties["날짜"]?.date?.start)
+                    : new Date(0);
+
+                  const dateB = b.properties["날짜"]?.date?.start
+                    ? new Date(b.properties["날짜"]?.date?.start)
+                    : new Date(0);
+                    return dateB.getTime() - dateA.getTime();
+                })
+                .map((item) => (
                   <div
                     key={item.id}
                     style={{ backgroundImage: `${item.cover?.file.url ? `url(${item.cover?.file.url})` : "none"}` }}
-                    className="group aspect-[7/5] bg-cover bg-center bg-white/20 backdrop-blur-sm p-4 rounded-3xl cursor-pointer transform transition-transform hover:scale-95 flex items-center justify-center text-center"
+                    className="group aspect-[7/5] bg-cover bg-center bg-white/20 backdrop-blur-sm p-4 rounded-3xl cursor-pointer transform transition-transform hover:scale-[98%] flex items-center justify-center text-center"
                     onClick={() => setSelectedPage(item)}
                   >
                     <div className="absolute w-full h-full bg-black opacity-0 group-hover:opacity-50 transition-opacity duration-300"></div>

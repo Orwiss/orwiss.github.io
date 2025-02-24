@@ -5,7 +5,7 @@ import { educationData, exhibitionData, projectData } from "./about/data";
 const About = () => {
   return (
     <div className="w-full h-full flex justify-center">
-      <div className="flex flex-col justify-start lg:justify-center w-[60vw] sm:w-[80vw] pt-[10vh] lg:pt-[14vh] text-white overflow-y-scroll xl:overflow-y-visible">
+      <div className="flex flex-col justify-start lg:justify-center w-[70vw] sm:w-[80vw] pt-[10vh] lg:pt-[14vh] text-white overflow-y-scroll xl:overflow-y-visible">
         <div className="flex flex-col lg:flex-row justify-between items-center">
           <div className="flex flex-col lg:flex-row items-center">
             <img src="/images/orwiss.png" className="w-[150px] h-[150px] rounded-full"/>
