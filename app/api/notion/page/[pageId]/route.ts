@@ -4,15 +4,9 @@ import { Client } from "@notionhq/client";
 const NOTION_API_KEY = process.env.NOTION_API_KEY;
 const notion = new Client({ auth: NOTION_API_KEY });
 
-interface Context {
-  params: {
-    pageId: string;
-  }
-}
-
-export async function GET(request: Request, { params }: Context) {
-  const context = await params;
-  const page_id = await context.pageId;
+export async function GET(request: Request) {  
+  const url = new URL(request.url);
+  const page_id = url.pathname.split("/")[4];
 
   try {
     const pageResponse = await notion.pages.retrieve({ page_id: page_id });
