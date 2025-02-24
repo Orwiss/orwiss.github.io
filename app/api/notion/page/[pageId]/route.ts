@@ -4,7 +4,13 @@ import { Client } from "@notionhq/client";
 const NOTION_API_KEY = process.env.NOTION_API_KEY;
 const notion = new Client({ auth: NOTION_API_KEY });
 
-export async function GET(request: Request, { params }: { params: { pageId: string }}) {
+interface Context {
+  params: {
+    pageId: string;
+  }
+}
+
+export async function GET(request: Request, { params }: Context) {
   const context = await params;
   const page_id = await context.pageId;
 
