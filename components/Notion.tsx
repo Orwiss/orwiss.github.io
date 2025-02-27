@@ -104,7 +104,7 @@ export default function Projects() {
       <div className="w-[70vw] min-h-screen flex flex-col items-center overflow-y-scroll">
         {selectedPage ? (
           <div className="w-full flex flex-col items-center pt-12 text-white overflow-y-scroll pointer-events-auto">
-            <div className="w-full flex flex-col items-center gap-2 xl:gap-4">
+            <div className="w-full flex flex-col items-center gap-2 xl:gap-4 mb-12">
               <button className="fixed md:left-[15vw] px-7 py-2 bg-white/50 backdrop-blur-sm rounded-full" onClick={() => setSelectedPage(null)}>
                 ← 목록
               </button>
@@ -123,7 +123,7 @@ export default function Projects() {
               </div>
             </div>
 
-            <div className="flex flex-col gap-4 mt-12 mb-24 w-full xl:w-[800px]">
+            <div className="flex flex-col gap-4 w-full xl:w-[800px] mb-24">
               {blocks.length > 0 ? (
                 blocks.map((block) => {
                   switch (block.type) {
@@ -205,7 +205,7 @@ export default function Projects() {
                       );
                     case "column_list":
                       return (
-                        <div key={block.id} className="w-full flex gap-4">
+                        <div key={block.id} className="w-full flex flex-1 flex-col sm:flex-row gap-4">
                           {(columnListData[block.id] || []).map((column) => (
                             <div key={column.id} className="flex flex-1 flex-col gap-4">
                               {(columnChildren[column.id] || []).map((childBlock) => {
