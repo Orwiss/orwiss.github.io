@@ -5,7 +5,7 @@ const NOTION_API_KEY = process.env.NOTION_API_KEY;
 const NOTION_DB_ID = process.env.NOTION_TEMP_DB_ID as string;
 const notion = new Client({ auth: NOTION_API_KEY });
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
     const response = await notion.databases.query({
       database_id: NOTION_DB_ID,

@@ -177,7 +177,7 @@ export default function Projects() {
                             const urlObj = new URL(url);
                             videoId = urlObj.searchParams.get("v") || url.split("/").pop() || "";
                           } catch (e) {
-                            console.error("Invalid URL:", url);
+                            console.error(e);
                           }
                         }
                         return (
