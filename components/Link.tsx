@@ -33,14 +33,14 @@ const Link = () => {
           href={link.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center justify-center bg-white bg-opacity-60 backdrop-blur-sm rounded-full w-[clamp(200px,40%,360px)] h-20 text-black text-lg font-bold my-8 text-center shadow-lg transition-transform transform hover:translate-y-[-4px] hover:shadow-2xl active:text-black pointer-events-auto"
+          className="flex items-center justify-center bg-white/50 backdrop-blur-md rounded-full w-[clamp(200px,30%,320px)] h-16 md:h-20 text-black text-lg font-bold my-6 md:my-8 text-center shadow-lg transition-transform transform hover:translate-y-[-4px] hover:shadow-2xl active:text-black pointer-events-auto"
         >
           <img
             src={link.icon}
             alt={link.name}
-            className="w-auto h-10 mr-2"
+            className="w-auto h-8 md:h-10 mr-2 lg:mr-4"
           />
-          <span>{link.name}</span>
+          <span className="text-sm md:text-lg">{link.name}</span>
         </a>
       ))}
     </div>

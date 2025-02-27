@@ -7,7 +7,6 @@ const notion = new Client({ auth: NOTION_API_KEY });
 
 export async function GET(request: Request) {
   try {
-    console.log(request)
     const response = await notion.databases.query({
       database_id: NOTION_DB_ID,
     });
