@@ -7,8 +7,8 @@ function setup() {
   textAlign(CENTER, CENTER)
   textSize(56)
   
-  for (let y = 0; y < height; y += height / div) {
-    for (let x = 0; x < width; x += width / div) {
+  for (let y = 0; y < height; y += height / div * pixelDensity()) {
+    for (let x = 0; x < width; x += width / div * pixelDensity()) {
       if (x == 0 || y == 0) continue
       ascii.push(new Typo(x, y))
     }
