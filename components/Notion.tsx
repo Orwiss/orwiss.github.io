@@ -194,13 +194,13 @@ export default function Projects() {
                     case "link_preview":
                       return (
                         <a key={block.id} href={block.link_preview?.url || ""}>
-                          <p className="text-lg font-bold underline">{block.link_preview?.url}</p>
+                          <p className="text-lg w-full font-bold underline break-words">{block.link_preview?.url}</p>
                         </a>
                       );
                     case "bookmark":
                       return (
                         <a key={block.id} href={block.bookmark?.url || ""}>
-                          <p className="text-lg font-bold underline">{block.bookmark?.url}</p>
+                          <span className="text-lg w-full font-bold underline break-words">{block.bookmark?.url}</span>
                         </a>
                       );
                     case "column_list":
