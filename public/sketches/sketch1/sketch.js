@@ -1,4 +1,4 @@
-let div = 20, ascii = []
+let div = 60, ascii = []
 
 function setup() {
   createCanvas(windowWidth, windowHeight)
@@ -7,8 +7,8 @@ function setup() {
   textAlign(CENTER, CENTER)
   textSize(56)
   
-  for (let y = 0; y < height; y += height / div * pixelDensity()) {
-    for (let x = 0; x < width; x += width / div * pixelDensity()) {
+  for (let y = 0; y < height; y += div) {
+    for (let x = 0; x < width; x += div) {
       if (x == 0 || y == 0) continue
       ascii.push(new Typo(x, y))
     }
@@ -23,6 +23,18 @@ function draw() {
 
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight)
+
+  ascii = ascii.filter(txt => txt.x < width && txt.y < height);
+
+  for (let x = 0; x < width; x += div) {
+    for (let y = 0; y < height; y += div) {
+      
+      if (!ascii.some(txt => txt.x === x && txt.y === y)) {
+        if (x == 0 || y == 0) continue
+        ascii.push(new Typo(x, y));
+      }
+    }
+  }
 }
 
 class Typo {

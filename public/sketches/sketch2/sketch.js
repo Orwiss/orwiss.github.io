@@ -77,6 +77,21 @@ function draw() {
   }
 }
 
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+
+  World.remove(world, wall);
+
+  wall = [
+    Bodies.rectangle(width / 2, -5, width, 10, { friction: 0.1, restitution: 0.95, isStatic: true }),
+    Bodies.rectangle(-5, height / 2, 10, height, { friction: 0.1, restitution: 0.95, isStatic: true }),
+    Bodies.rectangle(width + 5, height / 2, 10, height, { friction: 0.1, restitution: 0.95, isStatic: true }),
+    Bodies.rectangle(width / 2, height + 5, width, 10, { friction: 0.1, restitution: 0.95, isStatic: true })
+  ];
+
+  World.add(world, wall);
+}
+
 function circles(x, y, r, c) {
   let option = {
     friction: 0,

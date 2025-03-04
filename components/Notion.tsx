@@ -250,7 +250,7 @@ export default function Projects() {
                   }
                 })
               ) : (
-                <p className="text-gray-300">내용 없음</p>
+                <p className="text-gray-300">로딩 중...</p>
               )}
             </div>
           </div>
@@ -290,7 +290,7 @@ export default function Projects() {
                     </div>
                   ))
               ) : (
-                <p className="text-gray-300 col-span-full text-center">데이터 없음</p>
+                <p className="text-gray-300 col-span-full text-center">로딩 중...</p>
               )}
             </div>
           </div>

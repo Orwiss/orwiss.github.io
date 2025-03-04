@@ -14,7 +14,7 @@ const About = () => {
               <p className="text-md lg:text-xl mt-4">orwiss.design@gmail.com<br/>orwiss@kookmin.ac.kr</p>
             </div>
           </div>
-          <a href="https://orwiss.notion.site/6d45f80728b24b719db9c224bd68d6e1">
+          <a href="https://orwiss.notion.site/6d45f80728b24b719db9c224bd68d6e1" target="_blank">
             <div className="w-fit h-fit px-8 py-5 mt-6 lg:mt-0 text-sm xl:text-xl whitespace-nowrap text-white bg-white bg-opacity-50 rounded-full backdrop-blur-sm pointer-events-auto">
               CV Page
             </div>
