@@ -21,7 +21,7 @@ const About = () => {
           </a>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 w-full h-full gap-0 lg:gap-10 mt-12 pt-12 pointer-events-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-2 w-full h-full gap-0 lg:gap-10 mt-12 pt-12 overflow-visible xl:overflow-y-scroll pointer-events-auto">
           <div>
             <Section title="Education" items={educationData} />
           </div>
