@@ -28,6 +28,9 @@ type Page = {
 type Block = {
   id: string;
   type: string;
+  heading_1?: { rich_text: RichText[] };
+  heading_2?: { rich_text: RichText[] };
+  heading_3?: { rich_text: RichText[] };
   paragraph?: { rich_text: RichText[] };
   image?: { file: { url: string }; caption?: string };
   video?: { external?: { url: string }; file?: { url: string }; type: string };
@@ -50,7 +53,7 @@ export default function Projects() {
     fetch("/api/notion")
       .then((res) => res.json())
       .then((data: { results: Page[] }) => {
-        //console.log("API Response:", data);
+        console.log("API Response:", data);
         setData(data.results || []);
       })
       .catch((error) => console.error("Error fetching data:", error));
@@ -127,6 +130,30 @@ export default function Projects() {
               {blocks.length > 0 ? (
                 blocks.map((block) => {
                   switch (block.type) {
+                    case "heading_1":
+                      return (
+                        <h1 key={block.id} className="text-3xl xl:text-4xl font-bold text-white">
+                          {block.heading_1?.rich_text.map((text, index) => (
+                            <span key={index}>{text.plain_text}</span>
+                          ))}
+                        </h1>
+                      );
+                    case "heading_2":
+                      return (
+                        <h2 key={block.id} className="text-2xl xl:text-3xl font-bold text-white">
+                          {block.heading_2?.rich_text.map((text, index) => (
+                            <span key={index}>{text.plain_text}</span>
+                          ))}
+                        </h2>
+                      );
+                    case "heading_3":
+                      return (
+                        <h3 key={block.id} className="text-xl xl:text-2xl font-bold text-white">
+                          {block.heading_3?.rich_text.map((text, index) => (
+                            <span key={index}>{text.plain_text}</span>
+                          ))}
+                        </h3>
+                      );
                     case "paragraph":
                       return (
                         <p key={block.id} className="text-white">
@@ -193,15 +220,19 @@ export default function Projects() {
                     }
                     case "link_preview":
                       return (
-                        <a key={block.id} href={block.link_preview?.url || ""}>
+                        <a key={block.id} href={block.link_preview?.url || ""} target="_blank">
                           <p className="text-lg w-full font-bold underline break-words">{block.link_preview?.url}</p>
                         </a>
                       );
                     case "bookmark":
                       return (
-                        <a key={block.id} href={block.bookmark?.url || ""}>
+                        <a key={block.id} href={block.bookmark?.url || ""} target="_blank">
                           <span className="text-lg w-full font-bold underline break-words">{block.bookmark?.url}</span>
                         </a>
+                      );
+                    case "divider":
+                      return (
+                        <hr key={block.id} className="w-full border-t-2 border-dashed border-white/30" />
                       );
                     case "column_list":
                       return (
@@ -210,6 +241,30 @@ export default function Projects() {
                             <div key={column.id} className="flex flex-1 flex-col gap-4">
                               {(columnChildren[column.id] || []).map((childBlock) => {
                                 switch (childBlock.type) {
+                                  case "heading_1":
+                                    return (
+                                      <h1 key={childBlock.id} className="text-3xl xl:text-4xl font-bold text-white">
+                                        {childBlock.heading_1?.rich_text.map((text, index) => (
+                                          <span key={index}>{text.plain_text}</span>
+                                        ))}
+                                      </h1>
+                                    );
+                                  case "heading_2":
+                                    return (
+                                      <h2 key={childBlock.id} className="text-2xl xl:text-3xl font-bold text-white">
+                                        {childBlock.heading_2?.rich_text.map((text, index) => (
+                                          <span key={index}>{text.plain_text}</span>
+                                        ))}
+                                      </h2>
+                                    );
+                                  case "heading_3":
+                                    return (
+                                      <h3 key={childBlock.id} className="text-xl xl:text-2xl font-bold text-white">
+                                        {childBlock.heading_3?.rich_text.map((text, index) => (
+                                          <span key={index}>{text.plain_text}</span>
+                                        ))}
+                                      </h3>
+                                    );
                                   case "paragraph":
                                     return (
                                       <p key={childBlock.id} className="text-white">
