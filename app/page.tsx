@@ -38,7 +38,7 @@ export default function Home() {
   };
 
   return (
-    <div className="relative h-dvh text-white bg-black overscroll-none">
+    <div className="relative h-dvh text-white bg-black overflow-hidden overscroll-none">
       {projectNum !== null && <iframe
         key={`${projectNum + 1}`}
         src={`/sketches/sketch${projectNum + 1}/index.html`}

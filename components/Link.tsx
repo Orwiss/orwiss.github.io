@@ -26,7 +26,7 @@ const links: LinkType[] = [
 
 const Link = () => {
   return (
-    <div className="z-40 flex flex-col items-center justify-center min-h-screen">
+    <div className="z-40 w-full h-full flex flex-col items-center justify-center">
       {links.map((link) => (
         <a
           key={link.name}

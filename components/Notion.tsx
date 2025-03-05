@@ -103,10 +103,10 @@ export default function Projects() {
     : data;
 
   return (
-    <div className="flex justify-center h-full overflow-hidden">
-      <div className="w-[70vw] min-h-screen flex flex-col items-center overflow-y-scroll">
+    <div className="flex justify-center h-full">
+      <div className="w-[70vw] min-h-screen flex flex-col items-center overflow-y-scroll overscroll-none">
         {selectedPage ? (
-          <div className="w-full flex flex-col items-center pt-12 text-white overflow-y-scroll pointer-events-auto">
+          <div className="w-full flex flex-col items-center pt-12 text-white pointer-events-auto">
             <div className="w-full flex flex-col items-center gap-2 xl:gap-4 mb-12">
               <button className="fixed md:left-[15vw] px-7 py-2 bg-white/50 backdrop-blur-sm rounded-full" onClick={() => setSelectedPage(null)}>
                 ← 목록
