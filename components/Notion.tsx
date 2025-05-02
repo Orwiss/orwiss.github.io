@@ -104,7 +104,7 @@ export default function Projects() {
 
   return (
     <div className="flex justify-center h-full">
-      <div className="w-[70vw] h-full flex flex-col items-center overflow-y-scroll overscroll-none">
+      <div className="w-[70vw] h-full flex flex-col items-center overflow-y-auto overscroll-none" style={{ WebkitOverflowScrolling: 'touch' }}>
         {selectedPage ? (
           <div className="w-full flex flex-col items-center pt-12 text-white pointer-events-auto">
             <div className="w-full flex flex-col items-center gap-2 xl:gap-4 mb-12">

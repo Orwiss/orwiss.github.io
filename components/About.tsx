@@ -5,7 +5,7 @@ import { educationData, exhibitionData, projectData } from "./about/data";
 const About = () => {
   return (
     <div className="w-full h-full flex justify-center">
-      <div className="flex flex-col justify-start lg:justify-center w-[70vw] pt-[10vh] lg:pt-[14vh] text-white xl:overflow-y-visible overflow-y-scroll overscroll-none">
+      <div className="flex flex-col justify-start lg:justify-center w-[70vw] pt-[10vh] lg:pt-[14vh] text-white xl:overflow-y-visible overflow-y-scroll overscroll-none" style={{ WebkitOverflowScrolling: 'touch' }}>
         <div className="flex flex-col lg:flex-row justify-between items-center">
           <div className="flex flex-col lg:flex-row items-center">
             <img src="/images/orwiss.png" className="w-[150px] h-[150px] rounded-full"/>
