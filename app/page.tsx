@@ -45,6 +45,7 @@ export default function Home() {
         className='absolute top-0 left-0 z-0 w-full h-full border-none'
         title="background sketch"
         allow="accelerometer; gyroscope;"
+        sandbox="allow-scripts allow-same-origin"
       />}
       <div className={`absolute top-0 left-0 z-0 w-full h-full select-none pointer-events-none bg-black ${((level == 0) && (black == 'none'))? 'bg-opacity-0':'bg-opacity-80'} transition-all duration-500`}></div>
       <FadeEffect fadeState={fadeState}>{components[level]}</FadeEffect>
