@@ -7,7 +7,7 @@ let fSize = 0;
 let firstGroupColor;
 
 function setup() {
-  createCanvas(windowWidth, windowHeight, WEBGL2);
+  createCanvas(windowWidth, windowHeight, WEBGL);
   frameRate(60);
   colorMode(HSB);
   rectMode(CENTER);
@@ -29,7 +29,7 @@ function setup() {
 
 function draw() {
   background(0);
-  // translate(-width / 2, -height / 2);
+  translate(-width / 2, -height / 2);
 
   let mouseNorm = mobile? constrain(map(rotationY, -90, 90, -0.2, 1.2), 0, 1) : constrain(mouseX / width, 0, 1);
 
