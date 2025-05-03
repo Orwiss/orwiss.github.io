@@ -108,7 +108,7 @@ export default function Projects() {
         {selectedPage ? (
           <div className="w-full flex flex-col items-center pt-12 text-white pointer-events-auto">
             <div className="w-full flex flex-col items-center gap-2 xl:gap-4 mb-12">
-              <button className="fixed md:left-[15vw] px-7 py-2 bg-white/50 backdrop-blur-sm rounded-full" onClick={() => setSelectedPage(null)}>
+              <button className="fixed md:left-[15vw] px-7 py-2 bg-white/50 backdrop-blur-sm rounded-full z-20" onClick={() => setSelectedPage(null)}>
                 ← 목록
               </button>
               <h2 className="text-3xl xl:text-5xl font-bold mt-24 md:mt-0 text-center break-keep">
