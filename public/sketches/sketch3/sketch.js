@@ -1,3 +1,4 @@
+let mobile = false;
 let fontGraphics;
 let skeleton;
 let modules = [];
@@ -6,10 +7,17 @@ let fSize = 0;
 let firstGroupColor;
 
 function setup() {
-  createCanvas(windowWidth, windowHeight, WEBGL);
+  createCanvas(windowWidth, windowHeight, WEBGL2);
   frameRate(60);
   colorMode(HSB);
   rectMode(CENTER);
+
+  mobile = /mobile|android|iphone|ipad|ipod/i.test(navigator.userAgent)
+
+  if (typeof(DeviceOrientationEvent) !== 'undefined' && typeof(DeviceOrientationEvent.requestPermission) === 'function') {
+		DeviceOrientationEvent.requestPermission()
+		DeviceMotionEvent.requestPermission()
+	}
 
   fontGraphics = createGraphics(width, height);
   fontGraphics.pixelDensity(1);
@@ -21,9 +29,9 @@ function setup() {
 
 function draw() {
   background(0);
-  translate(-width / 2, -height / 2);
+  // translate(-width / 2, -height / 2);
 
-  let mouseNorm = constrain(mouseX / width, 0, 1);
+  let mouseNorm = mobile? constrain(map(rotationY, -PI / 2, PI / 2, 0, 1), 0, 1) : constrain(mouseX / width, 0, 1);
 
   groups.forEach((g, index) => {
     // fill(map(idx, 0, groups.length - 1, 0, 255), 100, 200);

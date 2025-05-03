@@ -184,7 +184,7 @@
   <div id="ui">
     <div class="ui-grid">
       <div class="row row-top">
-        <input type="text" id="textInput" maxlength="16" placeholder="안녕하세요">
+        <input type="text" id="textInput" maxlength="16" placeholder="안녕하세요" enterkeyhint="done">
       </div>
       <div class="row row-bottom">
         <label>
@@ -263,7 +263,8 @@
               firstColor: colorInput.value
             });
           }
-          saveTextToKV(text)
+          saveTextToKV(text);
+          textInput.blur();
         }
       });
     });
