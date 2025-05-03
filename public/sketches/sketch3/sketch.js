@@ -31,9 +31,7 @@ function draw() {
   background(0);
   translate(-width / 2, -height / 2);
 
-  console.log(rotationY);
-
-  let mouseNorm = mobile? constrain(map(rotationY, -90, 90, -0.2, 1.2), 0, 1) : constrain(mouseX / width, 0, 1);
+  let mouseNorm = mobile? constrain(map(degrees(rotationY), -90, 90, -0.2, 1.2), 0, 1) : constrain(mouseX / width, 0, 1);
 
   groups.forEach((g, index) => {
     // fill(map(idx, 0, groups.length - 1, 0, 255), 100, 200);
