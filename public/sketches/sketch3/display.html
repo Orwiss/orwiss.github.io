@@ -157,21 +157,27 @@
       align-items: center;
     }
   
-    button {
-      margin-top: 8px;
-      width: 100%;
-      background-color: #333;
-      color: white;
-      font-size: 14px;
-      padding: 10px 0;
-      border: none;
+    #fontBox {
+      position: absolute;
+      bottom: 24px;
+      right: 24px;
+      width: 160px;
+      height: 160px;
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.9);
       border-radius: 8px;
-      cursor: pointer;
-      transition: background 0.2s ease;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      font-family: sans-serif;
+      font-size: 14px;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
     }
-  
-    button:hover {
-      background-color: #111;
+
+    #fontBox input[type="file"] {
+      width: 100%;
     }
 
     input, select, button {
@@ -197,7 +203,9 @@
         <label>
           Font
           <select id="fonttypeInput">
-            ...
+            <option value="Pretendard-Regular">고딕</option>
+            <option value="RidiBatang">명조</option>
+            <option value="Gangbujangnim">손글씨</option>
           </select>
         </label>
     
@@ -217,13 +225,17 @@
     </div>
   </div>
 
-  <!-- p5 라이브러리 -->
+  <!--
+  <div id="fontBox">
+    <label>
+      Upload Font<br>
+      <input type="file" id="fontFileInput" accept=".ttf,.otf">
+    </label>
+  </div>
+  -->
+
   <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
-
-  <!-- 너의 p5 코드 -->
   <script src="sketch.js"></script>
-
-  <!-- UI 동작 스크립트 -->
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       const textInput = document.getElementById('textInput');
@@ -233,41 +245,38 @@
       const densityValue = document.getElementById('densityValue');
       const colorInput = document.getElementById('colorInput');
 
+      fonttypeInput.addEventListener('input', () => {
+        window.updateFromUI(getCurrentUIState());
+      });
+
       densityInput.addEventListener('input', () => {
-        const currentText = textInput.value.trim() || 'Type:Lab';
-        window.updateFromUI({
-          text: currentText,
-          density: parseInt(densityInput.value),
-          firstColor: colorInput.value
-        });
+        window.updateFromUI(getCurrentUIState());
+      });
+
+      colorInput.addEventListener('change', () => {
+        window.updateFromUI(getCurrentUIState());
       });
 
       textInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
           const text = textInput.value.trim();
-          if (text !== '') {
-            window.updateFromUI({
-              text,
-              density: 16 - parseInt(densityInput.value),
-              shape: shapeInput.value,
-              fonttype: fonttypeInput.value,
-              firstColor: colorInput.value
-            });
-          } else {
-            window.updateFromUI({
-              text: 'Type:Lab',
-              density: 16 - parseInt(densityInput.value),
-              shape: shapeInput.value,
-              fonttype: fonttypeInput.value,
-              firstColor: colorInput.value
-            });
-          }
+          window.updateFromUI(getCurrentUIState());
           saveTextToKV(text);
           textInput.blur();
         }
       });
     });
+
+    function getCurrentUIState() {
+      const text = document.getElementById('textInput').value.trim() || 'Type:Lab';
+      const shape = document.getElementById('shapeInput').value;
+      const fonttype = document.getElementById('fonttypeInput').value;
+      const density = 16 - parseInt(document.getElementById('densityInput').value);
+      const firstColor = document.getElementById('colorInput').value;
+
+      return { text, shape, fonttype, density, firstColor };
+    }
 
     async function saveTextToKV(text) {
       if (!text) return;

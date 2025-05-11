@@ -5,6 +5,13 @@ let modules = [];
 let groups = [];
 let fSize = 0;
 let firstGroupColor;
+let fontMap = {};
+
+function preload() {
+  fontMap["Pretendard-Regular"] = loadFont("fonts/Pretendard-Regular.ttf");
+  fontMap["RidiBatang"] = loadFont("fonts/RidiBatang.otf");
+  fontMap["Gangbujangnim"] = loadFont("fonts/Gangbujangnim.ttf");
+}
 
 function setup() {
   createCanvas(windowWidth, windowHeight, WEBGL);
@@ -49,7 +56,14 @@ function draw() {
 function regenerateSkeleton(inputText, density = 8) {
   modules = [];
   groups = [];
+  
+  let selectedFont = window.getUploadedFont?.();
 
+  if (!selectedFont && window.currentFontName && fontMap[window.currentFontName]) {
+    selectedFont = fontMap[window.currentFontName];
+  }
+
+  fontGraphics.textFont(selectedFont || 'sans-serif');
   fontGraphics.background(255);
   fontGraphics.fill(0);
   fontGraphics.textAlign(LEFT, TOP);
@@ -118,6 +132,16 @@ function regenerateSkeleton(inputText, density = 8) {
         groups[idx].push(m);
       }
     }
+  }
+  
+  let allY = modules.map(m => m.y);
+  let minY = Math.min(...allY);
+  let maxY = Math.max(...allY);
+  let centerY = (minY + maxY) / 2;
+  let shiftY = (height / 2) - centerY;
+
+  for (let m of modules) {
+    m.y += shiftY;
   }
 
   // ⬇ 여기서 연결 기반 정렬 및 angle 설정
@@ -280,6 +304,10 @@ class Module {
 }
 
 window.updateFromUI = function(entry) {
+  if (entry.fonttype && entry.fonttype !== 'uploaded') {
+    window.currentFontName = entry.fonttype;
+  }
+
   regenerateSkeleton(entry.text, entry.density);
   firstGroupColor = color(entry.firstColor || '#ff0000');
 };
