@@ -7,6 +7,12 @@ let fSize = 0;
 let firstGroupColor;
 let fontMap = {};
 
+function preload() {
+  fontMap["Pretendard-Regular"] = loadFont("fonts/Pretendard-Regular.ttf");
+  fontMap["RidiBatang"] = loadFont("fonts/RidiBatang.otf");
+  fontMap["Gangbujangnim"] = loadFont("fonts/Gangbujangnim.ttf");
+}
+
 function setup() {
   createCanvas(windowWidth, windowHeight, WEBGL);
   frameRate(60);
@@ -24,8 +30,8 @@ function setup() {
   fontGraphics.pixelDensity(1);
 
   firstGroupColor = color(0, 100, 100);
-
-  loadDefaultImage();
+  
+  regenerateSkeleton('Type:Lab', 8);
 }
 
 function draw() {
@@ -33,6 +39,11 @@ function draw() {
   translate(-width / 2, -height / 2);
 
   let mouseNorm = mobile? constrain(map(degrees(rotationY), -90, 90, -0.2, 1.2), 0, 1) : constrain(mouseX / width, 0, 1);
+
+
+  groups.forEach(g => {
+  
+});
 
   groups.forEach((g, index) => {
     // fill(map(idx, 0, groups.length - 1, 0, 255), 100, 200);
@@ -57,114 +68,84 @@ function draw() {
 function regenerateSkeleton(input, density = 8) {
   modules = [];
   groups = [];
+  
+  let selectedFont = window.getUploadedFont?.();
+
+  if (!selectedFont && window.currentFontName && fontMap[window.currentFontName]) {
+    selectedFont = fontMap[window.currentFontName];
+  }
+
+  fontGraphics.textFont(selectedFont || 'sans-serif');
+  fontGraphics.background(255);
+  fontGraphics.fill(0);
+  fontGraphics.textAlign(LEFT, TOP);
+
+  let tSize = 10;
+  while (tSize < 500) {
+    fontGraphics.textSize(tSize);
+    let tWidth = fontGraphics.textWidth(inputText);
+    let tHeight = fontGraphics.textAscent() + fontGraphics.textDescent();
+    if (tWidth > width * 0.9 || tHeight > height * 0.9) break;
+    tSize += 2;
+  }
+  fontGraphics.textSize(tSize - 2);
+  fSize = tSize - 2;
+
+  const letterList = inputText.split('').map(ch => fontGraphics.textWidth(ch));
+  const totalWidth = letterList.reduce((a, b) => a + b, 0) || 1;
+  const offsetX = (width - totalWidth) / 2;
+  const offsetY = (height - (fontGraphics.textAscent() + fontGraphics.textDescent())) / 2;
 
   fontGraphics.background(255);
+  fontGraphics.fill(0);
 
-  // 비율 유지하며 크기 조절
-  let canvasAspect = width / height;
-  let imgAspect = input.width / input.height;
-  let w, h;
-
-  if (imgAspect > canvasAspect) {
-    w = width;
-    h = width / imgAspect;
-  } else {
-    h = height;
-    w = height * imgAspect;
+  let acc = 0;
+  for (let i = 0; i < letterList.length; i++) {
+    fontGraphics.text(inputText[i], offsetX + acc, offsetY);
+    acc += letterList[i];
   }
 
-  const x0 = (width  - w) / 2;
-  const y0 = (height - h) / 2;
-
-  // 캔버스에 비율 맞게 중앙 배치
-  fontGraphics.image(input, x0, y0, w, h);
   let img = fontGraphics.get();
-
   img.loadPixels();
-  if (!img.pixels || img.pixels.length === 0) {
-    console.warn("⚠ 이미지 픽셀 접근 실패");
-    return;
-  }
-  console.log("🖼️ img pixels length:", img.pixels.length);
+
   let binaryImg = [];
-  console.log("▶ regenerateSkeleton 호출됨");
-  console.log("이미지 크기:", img.width, img.height);
   for (let y = 0; y < img.height; y++) {
-    let row = [];
+    let rows = [];
     for (let x = 0; x < img.width; x++) {
       let idx = 4 * (y * img.width + x);
       let val = img.pixels[idx];
-      row.push(val < 128 ? 1 : 0);
+      rows.push(val < 128 ? 1 : 0);
     }
-    binaryImg.push(row);
+    binaryImg.push(rows);
   }
 
   skeleton = zhangSuen(binaryImg);
-  const flatBin = binaryImg.flat().filter(v => v === 1).length;
-  console.log("binary 1의 수:", flatBin);
+  skeleton = downsampleSkeletonByDistance(skeleton, density);
 
-  /* ───── 1. adjacency 맵 (thin 스켈레톤 전체) ───── */
-  const H = skeleton.length, W = skeleton[0].length;
-  let adj = new Map();
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      if (skeleton[y][x] !== 1) continue;
-      let nb = [];
-      for (let dy=-1; dy<=1; dy++) for (let dx=-1; dx<=1; dx++) {
-        if (!dx && !dy) continue;
-        let ny = y+dy, nx = x+dx;
-        if (ny>=0 && ny<H && nx>=0 && nx<W && skeleton[ny][nx]===1) nb.push([ny,nx]);
+  const startX = [];
+  const endX = [];
+  acc = 0;
+  for (let i = 0; i < letterList.length; i++) {
+    startX[i] = offsetX + acc;
+    endX[i] = startX[i] + letterList[i];
+    acc += letterList[i];
+  }
+
+  for (let y = 0; y < skeleton.length; y++) {
+    for (let x = 0; x < skeleton[0].length; x++) {
+      if (skeleton[y][x] === 1) {
+        let idx = 0;
+        for (let i = 0; i < startX.length; i++) {
+          if (x >= startX[i] && x < endX[i]) { idx = i; break; }
+        }
+        let m = new Module(x, y, idx);
+        modules.push(m);
+        if (!groups[idx]) groups[idx] = [];
+        groups[idx].push(m);
       }
-      adj.set(`${y},${x}`, nb);
     }
   }
 
-  /* ───── 2. stroke 추적 (endpoint + loop) ───── */
-  let visited = new Set(), strokes = [];
-
-  function traceStroke(startKey){
-    let path = [], cur = startKey, prev = null;
-    while (true){
-      if (visited.has(cur)) break;
-      visited.add(cur);  path.push(cur);
-
-      let next = adj.get(cur)
-                    .map(([yy,xx]) => `${yy},${xx}`)
-                    .find(k => k !== prev && !visited.has(k));
-      if (!next) break;
-      prev = cur; cur = next;
-    }
-    if (path.length > 1) strokes.push(path);
-  }
-
-  /* 2-A) 끝점(deg==1) 부터 */
-  for (let [k, nb] of adj) if (nb.length === 1) traceStroke(k);
-  /* 2-B) 남은 픽셀(루프)도 모두 */
-  for (let k of adj.keys()) if (!visited.has(k)) traceStroke(k);
-
-  /* ───── 3. stroke 내부에서 density 간격으로 샘플링 ───── */
-  modules = []; groups = [];
-  const step = density;      // <= 8,4 등 기존 값 그대로
-  strokes.forEach((pxArr, gi) => {
-    let g = [];
-    for (let i = 0; i < pxArr.length; i += step) {
-      let [yy, xx] = pxArr[i].split(',').map(Number);
-      let mx = x0 + xx;
-      let my = y0 + yy;
-      let m  = new Module(mx, my, gi);
-      modules.push(m);
-      g.push(m);
-    }
-    if (g.length) groups.push(g);
-  });
-
-  console.log("strokes:", strokes.length,
-              "modules:", modules.length,
-              "groups :", groups.length);
-
-  // 정렬 및 위치 보정
-  console.log("modules.length:", modules.length);
-  console.log("groups.length:", groups.length);
   let allY = modules.map(m => m.y);
   let minY = Math.min(...allY);
   let maxY = Math.max(...allY);
@@ -175,21 +156,20 @@ function regenerateSkeleton(input, density = 8) {
     m.y += shiftY;
   }
 
-  // 그룹 정렬 및 각도 계산
+  // ⬇ 여기서 연결 기반 정렬 및 angle 설정
   for (let i = 0; i < groups.length; i++) {
-    if (!groups[i] || groups[i].length === 0) continue;
+    if (!groups[i] || groups[i].length === 0) continue;  // ← 이 줄 추가
+  
     let sorted = sortPointsByPath(groups[i]);
     groups[i] = sorted;
+  
     for (let j = 0; j < sorted.length; j++) {
       let prev = sorted[max(0, j - 1)];
       let next = sorted[min(j + 1, sorted.length - 1)];
-      sorted[j].angle = atan2(next.y - prev.y, next.x - prev.x);
+      let angle = atan2(next.y - prev.y, next.x - prev.x);
+      sorted[j].angle = angle;
     }
   }
-
-  skeleton = downsampleSkeletonByDistance(skeleton, density);
-  const flatThin = skeleton.flat().filter(v => v === 1).length;
-  console.log("thinned skeleton 1의 수:", flatThin);
 }
 
 function sortPointsByPath(points) {
@@ -334,3 +314,12 @@ class Module {
     pop();
   }
 }
+
+window.updateFromUI = function(entry) {
+  if (entry.fonttype && entry.fonttype !== 'uploaded') {
+    window.currentFontName = entry.fonttype;
+  }
+
+  regenerateSkeleton(entry.text, entry.density);
+  firstGroupColor = color(entry.firstColor || '#ff0000');
+};
