@@ -6,16 +6,12 @@ let groups = [];
 let fSize = 0;
 let firstGroupColor;
 let fontMap = {};
-let dashPhase = 0;
-let movingTrigger = 60;
-let mode = 'wave';
 
 function setup() {
   createCanvas(windowWidth, windowHeight, WEBGL);
   frameRate(60);
   colorMode(HSB);
   rectMode(CENTER);
-  noiseDetail(64, 0.01);
 
   mobile = /mobile|android|iphone|ipad|ipod/i.test(navigator.userAgent)
 
@@ -46,73 +42,16 @@ function draw() {
 
     noFill();
     stroke(255);
+    strokeWeight(1);
     beginShape();
-    /*
-    g.forEach((m, i) => {
-      console.log(map(i, 0, g.length, 1, 12));
-      if (mode === 'line') strokeWeight(map(i, 0, g.length, 1, 12));
-      else strokeWeight(1);
-      line(m.x, m.y);
-    });
+    g.forEach(m => vertex(m.x, m.y));
     endShape();
-    */
-
-    // if (mode === 'line') dashPhase += 0.0001;
-    let dMin = 1e9;
-    let segMin = 2, segMax = 12;
-
-    for (let p of g) {
-      const dx = p.x - mouseX;
-      const dy = p.y - mouseY;
-      const d  = Math.hypot(dx, dy);
-      if (d < dMin) dMin = d;
-    }
-
-    let gap = dMin > 200 ? segMin: map(dMin, 0, 200, segMax, segMin, true);
-    // if (mode === 'line') dashPhase += 0.0001;
     
-    for (let i = 1; i < g.length; i++) {
-      let m = g[i];
-      if (mode === 'line') {
-        let pc = dashPhase;
-        
-        strokeCap(SQUARE);
-        strokeWeight(map(i, 0, g.length, 1, 32));
-        //dashPhase = dashedSegment(g[i-1].x, g[i-1].y, g[i].x, g[i].y, dashPhase, gap, gap);
-        pc = dashedSegment(g[i-1].x, g[i-1].y, g[i].x, g[i].y, pc, gap, gap);
-        dashPhase = pc * 0.5;
-      } else if (mode !== 'glitch') {
-        movingTrigger = 60;
-        strokeWeight(1);
-        line(g[i - 1].x, g[i - 1].y, m.x, m.y);
-      }
-    }
-
     g.forEach(pt => {
-      pt.update(mouseX, mouseY, mouseX - pmouseX, mouseY - pmouseY);
+      pt.update(mouseNorm);
       pt.display();
     });
   });
-
-  if (mode === 'glitch' && movingTrigger > 0) movingTrigger --;
-}
-
-function dashedSegment(x1, y1, x2, y2, phase, dashLen, gapLen) {
-  const seg  = dashLen + gapLen;          // 이번 선분의 주기
-  const dx   = x2 - x1,  dy = y2 - y1;
-  const dist = Math.hypot(dx, dy);
-  const ux   = dx / dist,  uy = dy / dist;
-
-  // 이번 선분 안에서 첫 실선 시작 위치
-  for (let t = - (phase % seg); t < dist; t += seg) {
-    const a = Math.max(0, t);
-    const b = Math.min(t + dashLen, dist);
-    if (b > a) {
-      line(x1 + ux * a, y1 + uy * a,
-           x1 + ux * b, y1 + uy * b);
-    }
-  }
-  return phase + dist;
 }
 
 function regenerateSkeleton(input, density = 8) {
@@ -212,7 +151,7 @@ function regenerateSkeleton(input, density = 8) {
       let [yy, xx] = pxArr[i].split(',').map(Number);
       let mx = x0 + xx;
       let my = y0 + yy;
-      let m  = new Module(mx, my, gi, g.length, Math.ceil(pxArr.length / step));
+      let m  = new Module(mx, my, gi);
       modules.push(m);
       g.push(m);
     }
@@ -233,7 +172,6 @@ function regenerateSkeleton(input, density = 8) {
   let shiftY = (height / 2) - centerY;
 
   for (let m of modules) {
-    m.sy += shiftY;
     m.y += shiftY;
   }
 
@@ -365,158 +303,36 @@ function create2DArray(r, c, v) {
 }
 
 class Module {
-  constructor(x, y, group, order, groupLen) {
+  constructor(x, y, group) {
     this.sx = x;
     this.sy = y;
     this.x = x;
     this.y = y;
-    this.r = 4 + fSize / 64;
-    this.angle = 0;
-    this.c = color(random(360), 100, 100);
     this.group = group;
-    this.order = order;
-    this.groupLen = groupLen;
-    this.vx = random(-10, 10);
-    this.vy = random(-10, 10);
-    this.weight = random(0.5, 1.5);
-    this.theta = map(this.x, 0, width, -1, 1);
+    this.angle = 0;
+    this.r = 4 + fSize / 64;
+    this.minX = 0;
+    this.maxX = 0;
   }
 
-  update(mx, my, mvx, mvy) {
-    if (mode !== 'gravity') {
-      this.x = lerp(this.x, this.sx, 0.1);
-      this.y = lerp(this.y, this.sy, 0.1);
-      this.angle = lerp(this.angle, 0, 0.1);
+  update(mouseNorm) {
+    if (this.group in groups) {
+      let groupPoints = groups[this.group];
+      let xs = groupPoints.map(p => p.sx);
+      this.minX = Math.min(...xs);
+      this.maxX = Math.max(...xs);
     }
 
-    if (mode !== 'glitch') this.theta = map(this.x, 0, width, -1, 1);
-
-    /* ── A. 마우스 기여 ──────────────────────── */
-    let area = 200;                  // 영향 반경(px)
-    let d = dist(this.x, this.y, mx, my);
-    let deltaMouse = map(d, 0, area, 4, -0.2, true); // 가까이 3배, 멀면 -0.2
-
-    /* ── B. 파도 기여 (그대로) ───────────────── */
-    let deltaPattern = 0;
-    if (mode === 'wave') {
-      let waveSpeed = 0.03; // 파도 속도
-      let t   = (sin(frameCount * waveSpeed) + 1) * 0.5; // 0~1 사인파
-      let u   = this.order / (this.groupLen - 1);   // 0~1
-      let w   = 0.3;                                // 파도 폭
-      deltaPattern = map(abs(u - t), 0, w, 6, 1.5, true);
-    } else if (mode === 'breath') {
-      let breathSpeed = 0.0075; // 호흡 속도
-      // 2-D Perlin noise (x,y) + 3번째 인자에 시간
-      let noiseScale = 0.015;
-      let n = noise(this.sx * noiseScale, this.sy * noiseScale, frameCount * breathSpeed);   // 시간 진행
-      deltaPattern = map(n, 0, 1, 0.5, 24);
-    } else if (mode === 'gravity') {
-      let r = this.r * this.weight * 2
-      let gravity = 0.38 * this.weight; // 중력 가속도
-      let resist = 0.78;
-      this.vy += gravity;          // ↓ 가속
-      this.y  += this.vy;
-
-      const cursorBase = 28;                   // 기본 충돌 반경(px)
-      const mv = Math.hypot(mvx, mvy);         // 커서 속도 크기
-      const cRad = cursorBase + mv * 1.2;      // 속도에 비례해 커짐
-
-      const dx = this.x - mx;
-      const dy = this.y - my;
-      const dist = Math.hypot(dx, dy);
-      const minD = cRad + this.r;
-
-      if (dist < minD) {
-        const nx = dx / (dist || 1);
-        const ny = dy / (dist || 1);
-        const overlap = minD - dist;
-
-        // 위치 보정
-        this.x += nx * overlap;
-        this.y += ny * overlap;
-
-        // 속도 반사 + 커서 충격
-        const push = 0.1 * mv + 2;    // mv=0이어도 약간 튐
-        this.vx += nx * push;
-        this.vy += ny * push;
-
-        this.vx *= resist;
-        this.vy *= resist;
-      }
-
-      // ── 속도·위치 갱신 ────────────────────────
-      this.x += this.vx;
-      this.y += this.vy;
-      this.angle = atan2(this.vy, this.vx); // 속도 방향 각도  
-
-      // 왼쪽 벽
-      if (this.x - r < 0) {
-        this.x = r;
-        this.vx *= -resist;
-      }
-
-      // 오른쪽 벽
-      else if (this.x + r > width) {
-        this.x = width - r;
-        this.vx *= -resist;
-      }
-
-      // 천장
-      if (this.y - r < 0) {
-        this.y = r;
-        this.vy *= -resist;
-      }
-
-      // 바닥 충돌
-      if (this.y + r > height) {
-        this.y = height - r;        // 바닥 위에 딱 붙이기
-        this.vy *= -resist;        // 탄성 반사
-        if (this.y + r >= height - 0.5 && Math.abs(this.vy) < 0.5) {
-          this.vx *= 0.95;
-          if (Math.abs(this.vx) < 0.1) this.vx = 0;
-        }
-        if (abs(this.vy) < 0.2)    // 거의 멈추면 정지
-          this.vy = 0;
-      }
-    }
-
-    /* ── C. 합산 & 클램프 ────────────────────── */
-    this.scale = constrain(1 + deltaMouse + deltaPattern, 0.3, 16);
+    let localNorm = (this.sx - this.minX) / ((this.maxX - this.minX) || 1);
+    let d = abs(localNorm - mouseNorm);
+    this.scale = constrain(map(d, 0, 1, 4, 0.5), 0.5, 8);
   }
 
   display() {
     push();
     translate(this.x, this.y);
     rotate(this.angle);
-    if (mode === 'wave') {
-      stroke(255);
-      ellipse(0, 0, this.r * this.scale, this.r * this.scale, 6);
-    }
-    else if (mode === 'breath') {
-      noStroke();
-      fill((frameCount / 8) % 360, 100, 100);
-      circle(0, 0, this.r * this.scale);
-    } else if (mode === 'line') {
-
-    } else if (mode === 'gravity') {
-      noStroke();
-      fill(this.c);
-      circle(0, 0, this.r * this.weight * 4);
-    } else if (mode === 'glitch') {
-      stroke(120, 100, 100);
-      this.x = constrain(map(sin(this.theta), -1, 1, 0, width), 0, width);
-      if (abs(this.sx - this.x) < 6) circle(0, 0, this.r * this.weight * 8);
-      else line(-30, 0, 30, 0);
-      this.theta += map(movingTrigger, 0, 60, 0.02, 1);
-    }
+    ellipse(0, 0, this.r * this.scale, this.r * this.scale, 6);
     pop();
   }
-}
-
-function mousePressed() {
-  if (mode === 'wave') mode = 'line';
-  else if (mode === 'line') mode = 'breath';
-  else if (mode === 'breath') mode = 'glitch';
-  else if (mode === 'glitch') mode = 'gravity';
-  else if (mode === 'gravity') mode = 'wave';
 }
