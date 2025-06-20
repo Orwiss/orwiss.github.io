@@ -10,6 +10,22 @@ let dashPhase = 0;
 let movingTrigger = 60;
 let mode = 'wave';
 
+const modeGuideMap = {
+  'wave': '커서 가까이에서 원이 진동합니다',
+  'line': '스켈레톤이 굵은 선으로 연결됩니다',
+  'breath': '점들이 숨 쉬듯 움직입니다',
+  'glitch': '선이 흔들리며 흐트러집니다',
+  'gravity': '점들이 중력에 따라 움직입니다'
+};
+
+const guide = document.getElementById('mode-guide');
+guide.textContent = modeGuideMap[mode] || '';
+guide.style.opacity = 1;
+clearTimeout(window.__modeGuideTimeout);
+window.__modeGuideTimeout = setTimeout(() => {
+  guide.style.opacity = 0;
+}, 3000);
+
 function setup() {
   createCanvas(windowWidth, windowHeight, WEBGL);
   frameRate(60);
@@ -514,9 +530,28 @@ class Module {
 }
 
 function mousePressed() {
+  const target = window.event?.target;
+
+  if (
+    target &&
+    (target.closest('#floating-save-btn') ||
+     target.closest('#floating-description-btn') ||
+     target.closest('#description-modal'))
+  ) {
+    return; // UI 요소 클릭 시 무시
+  }
+
   if (mode === 'wave') mode = 'line';
   else if (mode === 'line') mode = 'breath';
   else if (mode === 'breath') mode = 'glitch';
   else if (mode === 'glitch') mode = 'gravity';
   else if (mode === 'gravity') mode = 'wave';
+
+  const guide = document.getElementById('mode-guide');
+  guide.textContent = modeGuideMap[mode] || '';
+  guide.style.opacity = 1;
+  clearTimeout(window.__modeGuideTimeout);
+  window.__modeGuideTimeout = setTimeout(() => {
+    guide.style.opacity = 0;
+  }, 3000);
 }

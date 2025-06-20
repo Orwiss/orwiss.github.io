@@ -10,16 +10,18 @@
       overflow: hidden;
       font-family: 'Pretendard', 'Noto Sans KR', sans-serif;
       background: #fff;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
     }
 
-    #floating-save-btn {
-      position: fixed;
-      bottom: 24px;
-      right: 24px;
-      width: 64px;
-      height: 64px;
+    .floating-buttons {
+      width: 128px;
+      height: 128px;
       border-radius: 50%;
-      background: #007aff;
+      background: #5555556e;
+      backdrop-filter: blur(12px);
       color: white;
       font-size: 24px;
       line-height: 64px;
@@ -28,11 +30,91 @@
       cursor: pointer;
       z-index: 999;
     }
+
+    .floating-buttons > img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    #floating-save-btn {
+      position: fixed;
+      bottom: 36px;
+      right: 36px;
+    }
+
+    #floating-description-btn {
+      position: fixed;
+      bottom: 36px;
+      left: 36px;
+    }
+
+    #description-modal {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0,0,0,0.6);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    #description-content {
+      background: white;
+      padding: 24px;
+      border-radius: 8px;
+      max-width: 480px;
+      font-size: 16px;
+      line-height: 1.5;
+      position: relative;
+    }
+
+    #description-close {
+      position: absolute;
+      top: 8px;
+      right: 12px;
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: bold;
+      color: #888;
+    }
+
+    #mode-guide {
+      position: fixed;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.65);
+      color: white;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 16px;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+      z-index: 998;
+    }
   </style>
   
 </head>
 <body>
-  <div id="floating-save-btn">📷</div>
+  <div class="floating-buttons" id="floating-description-btn">
+    <img src="description.png" alt="촬영">
+  </div>
+  <div class="floating-buttons" id="floating-save-btn">
+    <img src="capture.png" alt="촬영">
+  </div>
+  <div id="mode-guide"></div>
+
+  <div id="description-modal">
+    <div id="description-content">
+      <div id="description-close">✕</div>
+      <p><strong>SkeleType</strong> 시스템은 손글씨를 실시간으로 인식해 타이포그래픽 형태로 변환하는 인터랙티브 작품입니다.<br><br>
+      오른쪽 📷 버튼을 눌러 종이 위의 글씨를 전송할 수 있습니다. 이 창은 자동으로 닫을 수 있습니다.</p>
+    </div>
+  </div>
 
   <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
   <script src="sketch.js"></script>
@@ -51,13 +133,17 @@
       });
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
-      const socket = new WebSocket('wss://skeletypeexhibitionsystem-production.up.railway.app/ws');
+    function socketConnect() {
+      const socket = new WebSocket('wss://skeletype-exhibition-system.onrender.com/?client=browser');
       socket.binaryType = 'arraybuffer';
       window.socket = socket;
 
       socket.onopen = () => {
         console.log('✅ WebSocket 연결됨');
+      };
+      
+      socket.onerror = (err) => {
+        console.error('🔥 WebSocket 오류 발생:', err);
       };
 
       socket.onmessage = (event) => {
@@ -78,15 +164,44 @@
           console.error("❌ loadImage 실패 (onError)");
         });
       };
+
+      socket.onclose = (event) => {
+        console.warn('❌ WebSocket 닫힘: ', event.code, event.reason, event.wasClean);
+        setTimeout(socketConnect, 3000);
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      socketConnect();
+
+      document.getElementById('floating-save-btn').addEventListener('click', () => {
+        const ws = window.socket
+        
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send('trigger_save');
+          console.log('📤 저장 트리거 전송됨');
+        } else console.warn('⚠️ WebSocket이 열려있지 않음. 연결 상태:', ws.readyState);
+      });
+
+      setInterval(() => {
+        if (window.socket.readyState === WebSocket.OPEN) {
+          window.socket.send("ping");
+        }
+      }, 30000);
     });
 
-    document.getElementById('floating-save-btn').addEventListener('click', () => {
-      const ws = window.socket
-      
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send('trigger_save');
-        console.log('📤 저장 트리거 전송됨');
-      } else console.warn('⚠️ WebSocket이 열려있지 않음. 연결 상태:', ws.readyState);
+    document.getElementById('floating-description-btn').addEventListener('click', () => {
+      document.getElementById('description-modal').style.display = 'flex';
+    });
+
+    document.getElementById('description-close').addEventListener('click', () => {
+      document.getElementById('description-modal').style.display = 'none';
+    });
+
+    document.getElementById('description-modal').addEventListener('click', (e) => {
+      if (e.target.id === 'description-modal') {
+        document.getElementById('description-modal').style.display = 'none';
+      }
     });
   </script>
 </body>
