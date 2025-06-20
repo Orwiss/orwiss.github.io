@@ -11,10 +11,29 @@
       font-family: 'Pretendard', 'Noto Sans KR', sans-serif;
       background: #fff;
     }
+
+    #floating-save-btn {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: #007aff;
+      color: white;
+      font-size: 24px;
+      line-height: 64px;
+      text-align: center;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+      cursor: pointer;
+      z-index: 999;
+    }
   </style>
   
 </head>
 <body>
+  <div id="floating-save-btn">📷</div>
+
   <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
   <script src="sketch.js"></script>
   <!-- <script src="test.js"></script> -->
@@ -57,6 +76,14 @@
         }, () => {
           console.error("❌ loadImage 실패 (onError)");
         });
+      };
+    });
+
+    document.getElementById('floating-save-btn').addEventListener('click', () => {
+      const ws = new WebSocket('wss://skeletypeexhibitionsystem-production.up.railway.app/ws');
+      ws.onopen = () => {
+        ws.send('trigger_save');
+        ws.close();
       };
     });
   </script>
