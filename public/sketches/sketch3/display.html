@@ -54,6 +54,7 @@
     document.addEventListener('DOMContentLoaded', () => {
       const socket = new WebSocket('wss://skeletypeexhibitionsystem-production.up.railway.app/ws');
       socket.binaryType = 'arraybuffer';
+      window.socket = socket;
 
       socket.onopen = () => {
         console.log('✅ WebSocket 연결됨');
@@ -80,11 +81,12 @@
     });
 
     document.getElementById('floating-save-btn').addEventListener('click', () => {
-      const ws = new WebSocket('wss://skeletypeexhibitionsystem-production.up.railway.app/ws');
-      ws.onopen = () => {
+      const ws = window.socket
+      
+      if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send('trigger_save');
-        ws.close();
-      };
+        console.log('📤 저장 트리거 전송됨');
+      } else console.warn('⚠️ WebSocket이 열려있지 않음. 연결 상태:', ws.readyState);
     });
   </script>
 </body>
