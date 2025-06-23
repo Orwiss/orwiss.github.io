@@ -11,11 +11,11 @@ let movingTrigger = 60;
 let mode = 'wave';
 
 const modeGuideMap = {
-  'wave': '커서 가까이에서 원이 진동합니다',
+  'wave': '글자에 에너지가 전달됩니다',
   'line': '스켈레톤이 굵은 선으로 연결됩니다',
-  'breath': '점들이 숨 쉬듯 움직입니다',
-  'glitch': '선이 흔들리며 흐트러집니다',
-  'gravity': '점들이 중력에 따라 움직입니다'
+  'breath': '글자가 숨 쉬듯 움직입니다',
+  'glitch': '선이 해체되고 정렬되어 돌아갑니다',
+  'gravity': '글자가 점이 되어 떨어집니다'
 };
 
 const guide = document.getElementById('mode-guide');

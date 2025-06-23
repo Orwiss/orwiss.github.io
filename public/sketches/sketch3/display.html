@@ -29,12 +29,21 @@
       box-shadow: 0 4px 8px rgba(0,0,0,0.3);
       cursor: pointer;
       z-index: 999;
+      animation: bounceScale 1.2s infinite ease-in-out;
     }
 
     .floating-buttons > img {
       width: 100%;
       height: 100%;
       object-fit: cover;
+    }
+
+    .floating-buttons:hover {
+      background: #ffffff;
+    }
+
+    .floating-buttons > img:hover {
+      filter:invert(1);
     }
 
     #floating-save-btn {
@@ -96,6 +105,18 @@
       pointer-events: none;
       z-index: 998;
     }
+
+    @keyframes bounceScale {
+      0%, 100% {
+        transform: scale(1);
+      }
+      30% {
+        transform: scale(1.15);
+      }
+      60% {
+        transform: scale(0.95);
+      }
+    }
   </style>
   
 </head>
@@ -111,8 +132,10 @@
   <div id="description-modal">
     <div id="description-content">
       <div id="description-close">✕</div>
-      <p><strong>SkeleType</strong> 시스템은 손글씨를 실시간으로 인식해 타이포그래픽 형태로 변환하는 인터랙티브 작품입니다.<br><br>
-      오른쪽 📷 버튼을 눌러 종이 위의 글씨를 전송할 수 있습니다. 이 창은 자동으로 닫을 수 있습니다.</p>
+      <p><strong>SkeleType</strong> 는]은 손글씨를 웹에서 동작하는 인터랙티브 타이포그래피로 변환하는 작품입니다.<br><br>
+      종이에 글씨를 쓰고 카메라 밑에 반듯하게 놓은 뒤, <strong>우측 하단의 촬영 버튼</strong>을 눌러 손글씨를 웹으로 옮길 수 있습니다.<br>
+      촬영할 때는 <strong>그림자가 지지 않게 조심해주시고,</strong><br>
+      작성한 글씨가 나타나면 여러 가지 애니메이션과 마우스 인터랙션을 즐겨보세요 :)</p>
     </div>
   </div>
 
