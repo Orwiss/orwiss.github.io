@@ -28,15 +28,14 @@ const Link = () => {
   return (
     <div className="z-40 w-full h-full flex flex-col items-center justify-center">
       {links.map((link) => (
-        <div className="w-[clamp(200px,30%,320px)] h-16 md:h-20 rounded-full my-6 md:my-8 transition-transform transform hover:translate-y-[-4px]">
-          <div className="absolute w-full h-full rounded-full bg-white/15 glassEffect"></div>
           <a
             key={link.name}
             href={link.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-center w-full h-full rounded-full text-white text-lg font-bold text-center active:text-black pointer-events-auto"
+            className="flex items-center justify-center w-[clamp(200px,30%,320px)] h-16 md:h-20 rounded-full my-6 md:my-8 transition-transform transform hover:translate-y-[-4px] text-white text-lg font-bold text-center active:text-black pointer-events-auto"
           >
+            <div className="absolute w-full h-full rounded-full bg-white/15 glassEffect"></div>
             <img
               src={link.icon}
               alt={link.name}
@@ -44,7 +43,6 @@ const Link = () => {
             />
             <span className="text-sm md:text-lg">{link.name}</span>
           </a>
-        </div>
       ))}
     </div>
   );
