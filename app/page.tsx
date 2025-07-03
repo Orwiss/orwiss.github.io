@@ -8,7 +8,7 @@ import LinkPage from '@/components/Link';
 import FadeEffect from '@/components/Fade';
 import Nav from '@/components/Nav';
 
-const projects = ['ASCII Wave', 'Magnetic Packing', 'SkeleType'];
+const projects = ['ASCII Wave', 'Magnetic Packing'];
 
 export default function Home() {
   const [level, setLevel] = useState(0);

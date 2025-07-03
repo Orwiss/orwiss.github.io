@@ -19,7 +19,7 @@ const links: LinkType[] = [
   },
   {
     name: 'GitHub',
-    icon: 'https://cdn-icons-png.flaticon.com/512/25/25231.png',
+    icon: 'https://images.icon-icons.com/3685/PNG/512/github_logo_icon_229278.png',
     url: 'https://github.com/Orwiss',
   },
 ];
@@ -28,20 +28,23 @@ const Link = () => {
   return (
     <div className="z-40 w-full h-full flex flex-col items-center justify-center">
       {links.map((link) => (
-        <a
-          key={link.name}
-          href={link.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center justify-center bg-white/50 backdrop-blur-md rounded-full w-[clamp(200px,30%,320px)] h-16 md:h-20 text-black text-lg font-bold my-6 md:my-8 text-center shadow-lg transition-transform transform hover:translate-y-[-4px] hover:shadow-2xl active:text-black pointer-events-auto"
-        >
-          <img
-            src={link.icon}
-            alt={link.name}
-            className="w-auto h-8 md:h-10 mr-2 lg:mr-4"
-          />
-          <span className="text-sm md:text-lg">{link.name}</span>
-        </a>
+        <div className="w-[clamp(200px,30%,320px)] h-16 md:h-20 rounded-full my-6 md:my-8 transition-transform transform hover:translate-y-[-4px]">
+          <div className="absolute w-full h-full rounded-full bg-white/15 glassEffect"></div>
+          <a
+            key={link.name}
+            href={link.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center w-full h-full rounded-full text-white text-lg font-bold text-center active:text-black pointer-events-auto"
+          >
+            <img
+              src={link.icon}
+              alt={link.name}
+              className="w-auto h-8 md:h-10 mr-2 lg:mr-4"
+            />
+            <span className="text-sm md:text-lg">{link.name}</span>
+          </a>
+        </div>
       ))}
     </div>
   );
