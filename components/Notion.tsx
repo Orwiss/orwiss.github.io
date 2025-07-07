@@ -107,9 +107,9 @@ export default function Projects() {
       <div className="w-[70vw] h-full flex flex-col items-center overflow-y-auto overscroll-none" style={{ WebkitOverflowScrolling: 'touch' }}>
         {selectedPage ? (
           <div className="w-full flex flex-col items-center pt-12 text-white pointer-events-auto">
-            <div className="w-full flex flex-col items-center gap-2 xl:gap-4 mb-12">
+            <div className="w-full flex flex-col items-center gap-3 xl:gap-4 mb-12">
               {/* <div className="fixed md:left-[15vw] px-7 py-2 z-10 rounded-full text-transparent bg-white/15 glassEffect">← 목록</div> */}
-              <button className="fixed min-w-[120px] md:left-[15vw] px-7 py-2 rounded-full z-20" onClick={() => setSelectedPage(null)}>
+              <button className="fixed min-w-[120px] md:left-[15vw] px-7 py-3 rounded-full z-20" onClick={() => setSelectedPage(null)}>
                 <div className="absolute inset-0 bg-white/15 glassEffect z-[-1] rounded-full" />
                 ← 목록
               </button>
@@ -121,7 +121,8 @@ export default function Projects() {
               </p>
               <div className="flex flex-wrap gap-2 md:gap-3 justify-center">
                 {selectedPage.properties?.["사용 도구"]?.multi_select?.map((tag) => (
-                  <span key={tag.id} className="bg-white/50 backdrop-blur-sm text-xs xl:text-sm px-3 py-1 rounded-full">
+                  <span key={tag.id} className="relative text-xs xl:text-sm px-4 py-2 rounded-full">
+                    <div className="absolute inset-0 bg-white/15 glassEffect z-[-1] rounded-full" />
                     {tag.name}
                   </span>
                 ))}
@@ -317,7 +318,7 @@ export default function Projects() {
               {[...new Set(data.flatMap(item => item.properties?.["카테고리"].multi_select.map(tag => tag.name)))].sort().map((tag) => (
                 <button
                   key={tag}
-                  className={`relative min-w-[120px] px-4 py-2 xl:px-6 rounded-full text-xs md:text-sm xl:text-lg font-light text-white border-0 ${filter === tag ? 'bg-white/30' : 'bg-transparent text-black'} pointer-events-auto`}
+                  className={`relative min-w-[120px] px-4 py-3 xl:px-6 rounded-full text-xs md:text-sm xl:text-lg font-light text-white border-0 ${filter === tag ? 'bg-white/30' : 'bg-transparent text-black'} pointer-events-auto`}
                   onClick={() => setFilter(filter === tag ? null : tag)}
                 >
                   <div className="absolute inset-0 bg-white/15 glassEffect z-[-1] rounded-full" />
