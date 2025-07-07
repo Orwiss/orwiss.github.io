@@ -57,8 +57,8 @@ body {
     overflow: hidden;
     border-radius: inherit;
     isolation: isolate;
-    -webkit-backdrop-filter: blur(1px);
-            backdrop-filter: blur(1px);
+    -webkit-backdrop-filter: blur(2px);
+            backdrop-filter: blur(2px);
     -webkit-filter: url(#container-glass);
             filter: url(#container-glass);
 }

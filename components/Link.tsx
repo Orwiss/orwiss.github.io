@@ -35,7 +35,7 @@ const Link = () => {
             rel="noopener noreferrer"
             className="flex items-center justify-center w-[clamp(200px,30%,320px)] h-16 md:h-20 rounded-full my-6 md:my-8 transition-transform transform hover:translate-y-[-4px] text-white text-lg font-bold text-center active:text-black pointer-events-auto"
           >
-            <div className="absolute w-full h-full rounded-full bg-white/15 glassEffect"></div>
+            <div className="absolute w-full h-full rounded-full bg-white/10 glassEffect"></div>
             <img
               src={link.icon}
               alt={link.name}

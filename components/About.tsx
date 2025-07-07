@@ -15,7 +15,7 @@ const About = () => {
             </div>
           </div>
           <a href="https://orwiss.notion.site/6d45f80728b24b719db9c224bd68d6e1" target="_blank" className="relative">
-            <div className="absolute w-fit h-fit rounded-full px-8 py-5 mt-6 lg:mt-0 text-sm xl:text-xl text-transparent whitespace-nowrap bg-white/15 glassEffect">CV Page</div>
+            <div className="absolute w-fit h-fit rounded-full px-8 py-5 mt-6 lg:mt-0 text-sm xl:text-xl text-transparent whitespace-nowrap bg-white/10 glassEffect">CV Page</div>
             <div className="w-fit h-fit px-8 py-5 mt-6 lg:mt-0 text-sm xl:text-xl whitespace-nowrap text-white rounded-full pointer-events-auto">
               CV Page
             </div>
