@@ -49,7 +49,7 @@ function setup() {
   //Triangle Particle Set
   let triangleNum = int(random(36, 48))
   for (let i = 0; i < triangleNum; i++) {
-    let c = color(random(25, 180), 100, 90)
+    let c = color(random(20, 180), 100, 90)
     object.push(new triangles(random(width), random(height), random(5, 20), c))
   }
   
