@@ -4,10 +4,11 @@ import { useState, useEffect, useRef } from 'react';
 
 interface TitleProps {
   titleText: string;
+  guideText?: string;
   blackoff: () => void;
 }
 
-export default function Title({ titleText, blackoff }: TitleProps) {
+export default function Title({ titleText, guideText, blackoff }: TitleProps) {
   const [num, setNum] = useState(0);
   const [opacity, setOpacity] = useState(1);
   const title = useRef<HTMLParagraphElement | null>(null);
@@ -43,7 +44,7 @@ export default function Title({ titleText, blackoff }: TitleProps) {
   const text = titleText;
 
   return (
-    <div className="flex items-center justify-center w-full h-full">
+    <div className="flex flex-col items-center justify-center w-full h-full">
       <p
         ref={title}
         className="text-center font-extrabold text-[clamp(32pt,6vw,64pt)] whitespace-pre-wrap transition-opacity duration-1000"
@@ -54,6 +55,14 @@ export default function Title({ titleText, blackoff }: TitleProps) {
       >
         {text}
       </p>
+      {guideText && (
+        <p
+          className="mt-4 text-[clamp(12pt,2vw,20pt)] opacity-0 transition-opacity duration-1500 tracking-widest"
+          style={{ opacity: opacity }}
+        >
+          {guideText}
+        </p>
+      )}
     </div>
   );
 }

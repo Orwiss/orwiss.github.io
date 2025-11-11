@@ -27,7 +27,7 @@ const NavButton: React.FC<NavProps> = ({ level, pages, changeComponent, directio
           text-5xl xl:text-6xl transition-all duration-300 pointer-events-auto select-none`}
           onClick={handleClick}
         >
-        <div className="absolute inset-0 bg-white/10 glassEffect z-[-1] rounded-full" />
+        <div className="absolute inset-0 bg-black/20 glassEffect z-[-1] rounded-full" />
         <div>{direction === "left" ? "←" : "→"}</div>
       </div>
     </>

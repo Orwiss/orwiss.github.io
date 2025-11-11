@@ -110,7 +110,7 @@ export default function Projects() {
             <div className="w-full flex flex-col items-center gap-3 xl:gap-4 mb-12">
               {/* <div className="fixed md:left-[15vw] px-7 py-2 z-10 rounded-full text-transparent bg-white/15 glassEffect">← 목록</div> */}
               <button className="fixed min-w-[120px] md:left-[15vw] px-7 py-3 rounded-full z-20" onClick={() => setSelectedPage(null)}>
-                <div className="absolute inset-0 bg-white/10 glassEffect z-[-1] rounded-full"/>
+                <div className="absolute inset-0 bg-black/10 glassEffect z-[-1] rounded-full"/>
                 ← 목록
               </button>
               <h2 className="text-3xl xl:text-5xl font-bold mt-24 md:mt-0 text-center break-keep">
@@ -122,7 +122,7 @@ export default function Projects() {
               <div className="flex flex-wrap gap-2 md:gap-3 justify-center">
                 {selectedPage.properties?.["사용 도구"]?.multi_select?.map((tag) => (
                   <span key={tag.id} className="relative text-xs xl:text-sm px-4 py-2 rounded-full">
-                    <div className="absolute inset-0 bg-white/10 glassEffect z-[-1] rounded-full" />
+                    <div className="absolute inset-0 bg-black/10 glassEffect z-[-1] rounded-full" />
                     {tag.name}
                   </span>
                 ))}

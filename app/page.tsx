@@ -7,8 +7,14 @@ import Projects from '@/components/Notion';
 import LinkPage from '@/components/Link';
 import FadeEffect from '@/components/Fade';
 import Nav from '@/components/Nav';
+import GlassEffect from "@/components/GlassEffect";
 
 const projects = ['ASCII Wave', 'Magnetic Packing', 'Glass Breaker'];
+const guides = [
+  '눌러서 파동 만들기',
+  '큰 원을 움직이기',
+  '눌러서 유리 깨기'
+]
 
 export default function Home() {
   const [level, setLevel] = useState(0);
@@ -18,7 +24,7 @@ export default function Home() {
   const blackOff = () => setBlack('none');
 
   const components = [
-    <Title key={0} titleText={projectNum !== null? projects[projectNum]:''} blackoff={blackOff}/>, 
+    <Title key={0} titleText={projectNum !== null? projects[projectNum]:''} guideText={projectNum !== null? guides[projectNum]:''} blackoff={blackOff}/>, 
     <About key={1}/>, 
     <Projects key={2}/>, 
     <LinkPage key={3}/>
@@ -46,10 +52,17 @@ export default function Home() {
         title="background sketch"
         {... (projectNum + 1 === 3 ? { allow: 'accelerometer; gyroscope;' } : {})}
       />}
-      <div className={`absolute top-0 left-0 z-0 w-full h-full select-none pointer-events-none bg-black ${((level == 0) && (black == 'none'))? 'bg-opacity-0':'bg-opacity-80'} transition-all duration-500`}></div>
+      <div className={`absolute top-0 left-0 z-0 w-full h-full select-none pointer-events-none bg-black ${((level == 0) && (black == 'none'))? 'bg-opacity-0':'bg-opacity-70'} transition-all duration-500`}></div>
       <FadeEffect fadeState={fadeState}>{components[level]}</FadeEffect>
       <Nav level={level} changeComponent={changeComponent} pages={components.length} direction="left"/>
       <Nav level={level} changeComponent={changeComponent} pages={components.length} direction="right"/>
+
+      <div className="fixed top-0 left-0 w-full h-full flex items-center justify-center pointer-events-none">
+        <GlassEffect blurStdDev={4} maskScale={0.7} className=" top-10 z-10 text-white pointer-events-none">
+          <div></div>
+        </GlassEffect>
+      </div>
+      
     </div>
   );
 }
