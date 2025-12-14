@@ -25,9 +25,9 @@ const About = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 w-full h-full gap-0 lg:gap-10 mt-12 pt-12 overflow-visible xl:overflow-y-scroll pointer-events-auto">
           <div>
             <Section title="Education" items={educationData} />
+            <Section title="Exhibition" items={exhibitionData} />
           </div>
           <div>
-            <Section title="Exhibition" items={exhibitionData} />
             <Section title="Project" items={projectData} />
           </div>
         </div>

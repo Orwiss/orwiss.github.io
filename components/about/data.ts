@@ -31,6 +31,10 @@ export const exhibitionData = [
 export const projectData = [
   {
     date: "2025",
+    title: "뉴콘텐츠 아카데미 단기과정 3기 넥슨재단 트랙 <포니움> 개발",
+  },
+  {
+    date: "2025",
     title: "국립현대미술관 창동레지던시 입주연구자 기획전시 <무인공장> 작품 협력",
   },
   {
