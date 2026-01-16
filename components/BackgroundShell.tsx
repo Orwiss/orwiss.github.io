@@ -59,6 +59,7 @@ export default function BackgroundShell({ children }: { children: React.ReactNod
     setFadeState("fade-out");
     setTimeout(() => {
       router.push(routes[newLevel]);
+      setFadeState("fade-in");
     }, 500);
   };
 
