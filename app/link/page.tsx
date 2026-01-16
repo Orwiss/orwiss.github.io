@@ -1,5 +1,5 @@
 import LinkPage from "@/components/Link";
 
-export default function LinkRoute() {
+export default function LinkPage() {
   return <LinkPage />;
 }
