@@ -1,4 +1,7 @@
+"use client";
+
 import React from 'react';
+import { trackClarityEvent } from '@/lib/clarity';
 
 type LinkType = {
   name: string;
@@ -34,6 +37,7 @@ const Link = () => {
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center justify-center w-[clamp(200px,30%,320px)] h-16 md:h-20 rounded-full my-6 md:my-8 transition-transform transform hover:translate-y-[-4px] text-white text-lg font-bold text-center active:text-black pointer-events-auto"
+            onClick={() => trackClarityEvent("link:click", { target: link.name })}
           >
             <div className="absolute w-full h-full rounded-full bg-white/10 glassEffect"></div>
             <img

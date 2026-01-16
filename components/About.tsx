@@ -1,11 +1,44 @@
-import React from "react";
+"use client";
+
+import React, { useRef } from "react";
 import Section from "./about/Section";
 import { educationData, exhibitionData, projectData } from "./about/data";
+import { trackClarityEvent } from "@/lib/clarity";
+
+const scrollDepths = [25, 50, 75, 100];
 
 const About = () => {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const firedDepths = useRef<Set<number>>(new Set());
+
+  const handleScroll = () => {
+    const container = scrollRef.current;
+    if (!container) {
+      return;
+    }
+
+    const maxScroll = container.scrollHeight - container.clientHeight;
+    if (maxScroll <= 0) {
+      return;
+    }
+
+    const percent = Math.round((container.scrollTop / maxScroll) * 100);
+    scrollDepths.forEach((depth) => {
+      if (percent >= depth && !firedDepths.current.has(depth)) {
+        firedDepths.current.add(depth);
+        trackClarityEvent("about:scroll_depth", { depth });
+      }
+    });
+  };
+
   return (
     <div className="w-full h-full flex justify-center">
-      <div className="flex flex-col justify-start lg:justify-center w-[70vw] pt-[10vh] lg:pt-[14vh] text-white xl:overflow-y-visible overflow-y-scroll overscroll-none" style={{ WebkitOverflowScrolling: 'touch' }}>
+      <div
+        ref={scrollRef}
+        className="flex flex-col justify-start lg:justify-center w-[70vw] pt-[10vh] lg:pt-[14vh] text-white xl:overflow-y-visible overflow-y-scroll overscroll-none"
+        style={{ WebkitOverflowScrolling: 'touch' }}
+        onScroll={handleScroll}
+      >
         <div className="flex flex-col lg:flex-row justify-between items-center">
           <div className="flex flex-col lg:flex-row items-center">
             <img src="/images/orwiss.png" className="w-[150px] h-[150px] rounded-full"/>
@@ -14,7 +47,12 @@ const About = () => {
               <p className="text-md lg:text-xl mt-4">orwiss.design@gmail.com<br/>orwiss@kookmin.ac.kr</p>
             </div>
           </div>
-          <a href="https://orwiss.notion.site/6d45f80728b24b719db9c224bd68d6e1" target="_blank" className="relative">
+          <a
+            href="https://orwiss.notion.site/6d45f80728b24b719db9c224bd68d6e1"
+            target="_blank"
+            className="relative"
+            onClick={() => trackClarityEvent("cta:click", { target: "cv_page" })}
+          >
             <div className="absolute w-fit h-fit rounded-full px-8 py-5 mt-6 lg:mt-0 text-sm xl:text-xl text-transparent whitespace-nowrap bg-white/10 glassEffect">CV Page</div>
             <div className="w-fit h-fit px-8 py-5 mt-6 lg:mt-0 text-sm xl:text-xl whitespace-nowrap text-white rounded-full pointer-events-auto">
               CV Page
