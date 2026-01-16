@@ -35,26 +35,17 @@ export default function BackgroundShell({ children }: { children: React.ReactNod
   const [fadeState, setFadeState] = useState<"fade-in" | "fade-out">("fade-in");
   const [black, setBlack] = useState<"black" | "none">("black");
   const [projectNum, setProjectNum] = useState<number | null>(null);
-  const [displayedChildren, setDisplayedChildren] = useState(children);
-  const [isTransitioning, setIsTransitioning] = useState(false);
   const initialLoad = useRef(true);
-  const pendingPath = useRef<string | null>(null);
-  const previousChildren = useRef<React.ReactNode | null>(null);
 
   useEffect(() => {
     setProjectNum(Math.floor(Math.random() * projects.length));
   }, []);
 
   useEffect(() => {
-    routes.forEach((route) => {
-      router.prefetch(route);
-    });
-  }, [router]);
-
-  useEffect(() => {
     const newLevel = getLevelFromPath(pathname);
     setLevel(newLevel);
     setBlack("black");
+    setFadeState("fade-in");
 
     trackClarityEvent("section:view", {
       section: sections[newLevel],
@@ -64,34 +55,11 @@ export default function BackgroundShell({ children }: { children: React.ReactNod
     initialLoad.current = false;
   }, [pathname]);
 
-  useEffect(() => {
-    if (previousChildren.current === children) {
-      return;
-    }
-
-    if (pendingPath.current && pendingPath.current !== pathname) {
-      return;
-    }
-
-    pendingPath.current = null;
-    previousChildren.current = children;
-    setDisplayedChildren(children);
-    requestAnimationFrame(() => {
-      setFadeState("fade-in");
-      setIsTransitioning(false);
-    });
-  }, [children, pathname]);
-
   const changeComponent = (newLevel: number) => {
-    if (isTransitioning) {
-      return;
-    }
-
-    setIsTransitioning(true);
     setFadeState("fade-out");
     setTimeout(() => {
-      pendingPath.current = routes[newLevel];
       router.push(routes[newLevel]);
+      setFadeState("fade-in");
     }, 500);
   };
 
@@ -117,7 +85,7 @@ export default function BackgroundShell({ children }: { children: React.ReactNod
             level === 0 && black === "none" ? "bg-opacity-0" : "bg-opacity-70"
           } transition-all duration-500`}
         ></div>
-        <FadeEffect fadeState={fadeState}>{displayedChildren}</FadeEffect>
+        <FadeEffect fadeState={fadeState}>{children}</FadeEffect>
         <Nav
           level={level}
           changeComponent={changeComponent}
