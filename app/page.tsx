@@ -8,13 +8,15 @@ import LinkPage from '@/components/Link';
 import FadeEffect from '@/components/Fade';
 import Nav from '@/components/Nav';
 import GlassEffect from "@/components/GlassEffect";
+import { trackClarityEvent } from "@/lib/clarity";
 
 const projects = ['ASCII Wave', 'Magnetic Packing', 'Glass Breaker'];
 const guides = [
   '눌러서 파동 만들기',
   '큰 원을 움직이기',
   '눌러서 유리 깨기'
-]
+];
+const sections = ["title", "about", "projects", "links"];
 
 export default function Home() {
   const [level, setLevel] = useState(0);
@@ -33,6 +35,13 @@ export default function Home() {
   useEffect(() => {
     setProjectNum(Math.floor(Math.random() * projects.length));
   }, []);
+
+  useEffect(() => {
+    trackClarityEvent("section:view", {
+      section: sections[level],
+      via: level === 0 ? "load" : "nav",
+    });
+  }, [level]);
 
   const changeComponent = (newLevel: number) => {
     setFadeState('fade-out');
@@ -54,8 +63,20 @@ export default function Home() {
       />}
       <div className={`absolute top-0 left-0 z-0 w-full h-full select-none pointer-events-none bg-black ${((level == 0) && (black == 'none'))? 'bg-opacity-0':'bg-opacity-70'} transition-all duration-500`}></div>
       <FadeEffect fadeState={fadeState}>{components[level]}</FadeEffect>
-      <Nav level={level} changeComponent={changeComponent} pages={components.length} direction="left"/>
-      <Nav level={level} changeComponent={changeComponent} pages={components.length} direction="right"/>
+      <Nav
+        level={level}
+        changeComponent={changeComponent}
+        pages={components.length}
+        direction="left"
+        sections={sections}
+      />
+      <Nav
+        level={level}
+        changeComponent={changeComponent}
+        pages={components.length}
+        direction="right"
+        sections={sections}
+      />
 
       <div className="fixed top-0 left-0 w-full h-full flex items-center justify-center pointer-events-none">
         <GlassEffect blurStdDev={4} maskScale={0.7} className=" top-10 z-10 text-white pointer-events-none">

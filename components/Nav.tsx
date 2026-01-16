@@ -1,18 +1,26 @@
 import React from "react";
+import { trackClarityEvent } from "@/lib/clarity";
 
 interface NavProps {
   level: number;
   pages: number;
   changeComponent: (newLevel: number) => void;
   direction: "left" | "right";
+  sections: string[];
 }
 
-const NavButton: React.FC<NavProps> = ({ level, pages, changeComponent, direction }) => {
+const NavButton: React.FC<NavProps> = ({ level, pages, changeComponent, direction, sections }) => {
   const handleClick = () => {
     const newLevel = direction === "left" 
       ? (level - 1 + pages) % pages 
       : (level + 1) % pages;
-      
+
+    trackClarityEvent("nav:click", {
+      direction,
+      from_section: sections[level],
+      to_section: sections[newLevel],
+    });
+
     changeComponent(newLevel);
   };
 
