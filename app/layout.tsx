@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Script from "next/script";
+import BackgroundShell from "@/components/BackgroundShell";
 
 import "./globals.css";
 
@@ -30,7 +31,7 @@ export default function RootLayout({
             })(window, document, "clarity", "script", "${clarityId}");
           `}</Script>
         ) : null}
-        {children}
+        <BackgroundShell>{children}</BackgroundShell>
 
         <svg style={{ display: 'none' }}>
           <filter id="container-glass" x="0%" y="0%" width="100%" height="100%">
