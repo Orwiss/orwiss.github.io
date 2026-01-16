@@ -45,6 +45,7 @@ export default function BackgroundShell({ children }: { children: React.ReactNod
     const newLevel = getLevelFromPath(pathname);
     setLevel(newLevel);
     setBlack("black");
+    setFadeState("fade-in");
 
     trackClarityEvent("section:view", {
       section: sections[newLevel],
