@@ -10,7 +10,11 @@ export async function GET() {
     const response = await notion.databases.query({
       database_id: NOTION_DB_ID,
     });
-    return NextResponse.json(response);
+    return NextResponse.json(response, {
+      headers: {
+        'Cache-Control': 'no-store, max-age=0',
+      },
+    });
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: "Failed to fetch Notion data" }, { status: 500 });
