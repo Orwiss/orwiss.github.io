@@ -1,6 +1,7 @@
 "use client";
 
 type TrackingPayload = Record<string, string | number | boolean | null | undefined>;
+type DataLayerEvent = TrackingPayload & { event: string };
 
 type SiteEventOptions = {
   clarityEvent?: string;
@@ -11,10 +12,16 @@ type SiteEventOptions = {
 declare global {
   interface Window {
     clarity?: (...args: unknown[]) => void;
-    dataLayer?: unknown[];
-    gtag?: (...args: unknown[]) => void;
+    dataLayer?: DataLayerEvent[];
   }
 }
+
+const normalizePayload = (payload?: TrackingPayload) =>
+  payload
+    ? Object.fromEntries(
+        Object.entries(payload).filter(([, value]) => value !== undefined),
+      )
+    : undefined;
 
 export const trackClarityEvent = (name: string, payload?: TrackingPayload) => {
   if (!window.clarity) {
@@ -35,20 +42,13 @@ export const trackClarityEvent = (name: string, payload?: TrackingPayload) => {
 };
 
 export const trackGoogleAnalyticsEvent = (name: string, payload?: TrackingPayload) => {
-  if (!window.gtag) {
-    return;
-  }
+  window.dataLayer = window.dataLayer ?? [];
+  const normalizedPayload = normalizePayload(payload);
 
-  const normalizedPayload =
-    payload &&
-    Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined));
-
-  if (normalizedPayload) {
-    window.gtag("event", name, normalizedPayload);
-    return;
-  }
-
-  window.gtag("event", name);
+  window.dataLayer.push({
+    event: name,
+    ...(normalizedPayload ?? {}),
+  });
 };
 
 export const trackSiteEvent = ({ clarityEvent, gaEvent, payload }: SiteEventOptions) => {

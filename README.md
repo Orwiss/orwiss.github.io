@@ -18,17 +18,31 @@ This project supports both Google Analytics 4 and Microsoft Clarity.
 Copy [.env.example](C:/Users/orwis/OneDrive/Documents/Playground/_tmp_site_repo/.env.example) to `.env.local` and fill in:
 
 ```bash
-NEXT_PUBLIC_GA_ID=G-XXXXXXXXXX
+NEXT_PUBLIC_GTM_ID=GTM-XXXXXXX
 NEXT_PUBLIC_CLARITY_ID=xxxxxxxxxx
 ```
 
-### Google Analytics 4
+`NEXT_PUBLIC_GTM_ID` is optional here because the site already falls back to the current production container `GTM-MPMTP5SW`.
 
-1. Create a GA4 property and a Web data stream.
-2. Copy the Measurement ID that looks like `G-XXXXXXXXXX`.
-3. Put it in `NEXT_PUBLIC_GA_ID`.
-4. Deploy and open the site.
-5. Verify in GA4 Realtime or DebugView.
+### Google Tag Manager + GA4
+
+1. The site loads GTM container `GTM-MPMTP5SW`.
+2. In GTM, create a `Google tag`.
+3. Use the GA4 Measurement ID `G-16HN6ZXNBG`.
+4. Set the trigger to `All Pages`.
+5. Publish the container.
+6. Check GA4 Realtime to confirm page views.
+
+Custom interaction events are pushed into `dataLayer` with these event names:
+
+- `project_card_click`
+- `project_detail_view`
+- `cv_click`
+- `outbound_link_click`
+- `about_scroll_depth`
+- `section_nav_click`
+
+If you want those custom events to appear in GA4, create a GTM `GA4 Event` tag for each event name and trigger it from the matching Custom Event.
 
 ### Microsoft Clarity
 
@@ -40,7 +54,7 @@ NEXT_PUBLIC_CLARITY_ID=xxxxxxxxxx
 
 ## Tracked Events
 
-### Sent to GA4 and Clarity
+### Pushed to GTM dataLayer and sent to Clarity
 
 - `project_card_click`
 - `project_detail_view`
@@ -78,6 +92,6 @@ Use Clarity for behavior and UX debugging:
 ## Recommended Checks After Deployment
 
 1. Open the site and click a few project cards.
-2. Confirm `project_card_click` and `project_detail_view` appear in GA4 Realtime.
+2. In GTM Preview, confirm `project_card_click` and `project_detail_view` hit the data layer.
 3. Confirm the session appears in Clarity.
-4. Confirm CV and external link clicks are tracked.
+4. After GTM event tags are published, confirm the same events appear in GA4 Realtime.
