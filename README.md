@@ -1,36 +1,83 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Orwiss Portfolio
 
-## Getting Started
-
-First, run the development server:
+## Local Development
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Analytics Setup
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+This project supports both Google Analytics 4 and Microsoft Clarity.
 
-## Learn More
+### Environment Variables
 
-To learn more about Next.js, take a look at the following resources:
+Copy [.env.example](C:/Users/orwis/OneDrive/Documents/Playground/_tmp_site_repo/.env.example) to `.env.local` and fill in:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+NEXT_PUBLIC_GA_ID=G-XXXXXXXXXX
+NEXT_PUBLIC_CLARITY_ID=xxxxxxxxxx
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Google Analytics 4
 
-## Deploy on Vercel
+1. Create a GA4 property and a Web data stream.
+2. Copy the Measurement ID that looks like `G-XXXXXXXXXX`.
+3. Put it in `NEXT_PUBLIC_GA_ID`.
+4. Deploy and open the site.
+5. Verify in GA4 Realtime or DebugView.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Microsoft Clarity
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Create a Clarity project for `orwiss.xyz`.
+2. Copy the Clarity project ID.
+3. Put it in `NEXT_PUBLIC_CLARITY_ID`.
+4. Deploy and visit the site once.
+5. Verify in the Clarity dashboard.
+
+## Tracked Events
+
+### Sent to GA4 and Clarity
+
+- `project_card_click`
+- `project_detail_view`
+- `cv_click`
+- `outbound_link_click`
+- `about_scroll_depth`
+- `section_nav_click`
+
+### Sent to Clarity only
+
+- `section:view`
+
+## What Each Tool Is For
+
+### GA4
+
+Use GA4 for counts and trends:
+
+- which pages are most visited
+- which projects are clicked most
+- which external links get the most clicks
+- what traffic sources bring visitors
+- mobile vs desktop differences
+
+### Clarity
+
+Use Clarity for behavior and UX debugging:
+
+- session replay
+- click heatmaps
+- scroll behavior
+- dead clicks or rage clicks
+- mobile interaction problems
+
+## Recommended Checks After Deployment
+
+1. Open the site and click a few project cards.
+2. Confirm `project_card_click` and `project_detail_view` appear in GA4 Realtime.
+3. Confirm the session appears in Clarity.
+4. Confirm CV and external link clicks are tracked.

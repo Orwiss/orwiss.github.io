@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { primeProjectDetail, primeProjectPreview } from "@/lib/projectDetailClient";
+import { trackSiteEvent } from "@/lib/tracking";
 import {
   PROJECT_CATEGORY_PROPERTY,
   PROJECT_DATE_PROPERTY,
@@ -57,6 +58,21 @@ export default function Projects({ initialData, initialError = null }: ProjectsP
 
     prefetchedProjectIds.current.add(item.id);
     router.prefetch(`/project/${item.id}`);
+  };
+
+  const handleProjectClick = (item: ProjectPage) => {
+    prepareProjectDetail(item, true);
+    trackSiteEvent({
+      clarityEvent: "project:card_click",
+      gaEvent: "project_card_click",
+      payload: {
+        project_id: item.id,
+        project_title: getProjectTitle(item),
+        project_category: getProjectCategories(item)
+          .map((tag) => tag.name)
+          .join(", "),
+      },
+    });
   };
 
   const tags = useMemo(
@@ -123,7 +139,7 @@ export default function Projects({ initialData, initialError = null }: ProjectsP
                       onMouseEnter={() => prepareProjectDetail(item, true)}
                       onFocus={() => prepareProjectDetail(item, true)}
                       onTouchStart={() => prepareProjectDetail(item, true)}
-                      onClick={() => prepareProjectDetail(item, true)}
+                      onClick={() => handleProjectClick(item)}
                       className="group relative aspect-[7/5] p-4 rounded-3xl cursor-pointer transition-transform hover:scale-[98%] flex items-center justify-center text-center overflow-hidden"
                     >
                       {!showCoverFallback ? (

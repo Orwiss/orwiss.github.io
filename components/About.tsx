@@ -3,7 +3,7 @@
 import React, { useRef } from "react";
 import Section from "./about/Section";
 import { educationData, exhibitionData, projectData } from "./about/data";
-import { trackClarityEvent } from "@/lib/clarity";
+import { trackSiteEvent } from "@/lib/tracking";
 
 const scrollDepths = [25, 50, 75, 100];
 
@@ -26,7 +26,11 @@ const About = () => {
     scrollDepths.forEach((depth) => {
       if (percent >= depth && !firedDepths.current.has(depth)) {
         firedDepths.current.add(depth);
-        trackClarityEvent("about:scroll_depth", { depth });
+        trackSiteEvent({
+          clarityEvent: "about:scroll_depth",
+          gaEvent: "about_scroll_depth",
+          payload: { depth },
+        });
       }
     });
   };
@@ -51,7 +55,13 @@ const About = () => {
             href="https://orwiss.notion.site/6d45f80728b24b719db9c224bd68d6e1"
             target="_blank"
             className="relative"
-            onClick={() => trackClarityEvent("cta:click", { target: "cv_page" })}
+            onClick={() =>
+              trackSiteEvent({
+                clarityEvent: "cta:click",
+                gaEvent: "cv_click",
+                payload: { target: "cv_page" },
+              })
+            }
           >
             <div className="absolute w-fit h-fit rounded-full px-8 py-5 mt-6 lg:mt-0 text-sm xl:text-xl text-transparent whitespace-nowrap bg-white/10 glassEffect">CV Page</div>
             <div className="w-fit h-fit px-8 py-5 mt-6 lg:mt-0 text-sm xl:text-xl whitespace-nowrap text-white rounded-full pointer-events-auto">

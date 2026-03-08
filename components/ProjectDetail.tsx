@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   PROJECT_LIST_LABEL,
   PROJECT_LOADING_LABEL,
@@ -11,6 +11,7 @@ import {
   getProjectTitle,
   getProjectTools,
 } from "@/lib/projectNotion";
+import { trackSiteEvent } from "@/lib/tracking";
 import {
   getCachedProjectDetail,
   getProjectPreview,
@@ -143,6 +144,7 @@ function renderBlock(block: ProjectBlock) {
 
 export default function ProjectDetail({ pageId }: ProjectDetailProps) {
   const cachedDetail = getCachedProjectDetail(pageId);
+  const trackedViewRef = useRef(false);
   const [page, setPage] = useState<ProjectPage | null>(
     () => cachedDetail?.page ?? getProjectPreview(pageId)
   );
@@ -151,6 +153,8 @@ export default function ProjectDetail({ pageId }: ProjectDetailProps) {
   const [isLoading, setIsLoading] = useState(() => !cachedDetail?.blocks.length);
 
   useEffect(() => {
+    trackedViewRef.current = false;
+
     const cached = getCachedProjectDetail(pageId);
     if (cached) {
       setPage(cached.page ?? getProjectPreview(pageId));
@@ -182,6 +186,22 @@ export default function ProjectDetail({ pageId }: ProjectDetailProps) {
       cancelled = true;
     };
   }, [pageId]);
+
+  useEffect(() => {
+    if (!page || trackedViewRef.current) {
+      return;
+    }
+
+    trackedViewRef.current = true;
+    trackSiteEvent({
+      clarityEvent: "project:detail_view",
+      gaEvent: "project_detail_view",
+      payload: {
+        project_id: page.id,
+        project_title: getProjectTitle(page),
+      },
+    });
+  }, [page]);
 
   return (
     <div className="flex justify-center h-full">

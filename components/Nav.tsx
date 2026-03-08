@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { trackClarityEvent } from "@/lib/clarity";
+import { trackSiteEvent } from "@/lib/tracking";
 
 interface NavProps {
   level: number;
@@ -17,10 +17,14 @@ const NavButton: React.FC<NavProps> = ({ level, pages, changeComponent, directio
   const handleClick = () => {
     const newLevel = direction === "left" ? (level - 1 + pages) % pages : (level + 1) % pages;
 
-    trackClarityEvent("nav:click", {
-      direction,
-      from_section: sections[level],
-      to_section: sections[newLevel],
+    trackSiteEvent({
+      clarityEvent: "nav:click",
+      gaEvent: "section_nav_click",
+      payload: {
+        direction,
+        from_section: sections[level],
+        to_section: sections[newLevel],
+      },
     });
 
     changeComponent(newLevel);
