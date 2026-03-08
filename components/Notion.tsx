@@ -1,59 +1,28 @@
-'use client'
+"use client";
 
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import {
+  PROJECT_CATEGORY_PROPERTY,
+  PROJECT_DATE_PROPERTY,
+  PROJECT_LIST_ERROR_LABEL,
+  PROJECT_LOADING_LABEL,
+  ProjectPage,
+  getProjectCategories,
+  getProjectCoverUrl,
+  getProjectTitle,
+} from "@/lib/projectNotion";
 
-type MultiSelectTag = {
-  id: string;
-  name: string;
-};
-
-type RichText = {
-  plain_text: string;
-};
-
-type PageProperties = {
-  이름: { title: RichText[] };
-  날짜?: { date: { start: string } };
-  카테고리: { multi_select: MultiSelectTag[] };
-  "사용 도구"?: { multi_select: MultiSelectTag[] };
-  참여자?: { rich_text: RichText[] };
-};
-
-type Page = {
-  id: string;
-  properties: PageProperties;
-  cover?: {
-    file?: { url: string };
-    external?: { url: string };
-  };
-};
-
-type Block = {
-  id: string;
-  type: string;
-  heading_1?: { rich_text: RichText[] };
-  heading_2?: { rich_text: RichText[] };
-  heading_3?: { rich_text: RichText[] };
-  paragraph?: { rich_text: RichText[] };
-  image?: { file: { url: string }; caption?: string };
-  video?: { external?: { url: string }; file?: { url: string }; type: string };
-  link_preview?: { url: string };
-  bookmark?: { url: string };
-  numbered_list_item?: { rich_text: RichText[] };
-  has_children?: boolean;
-  children?: Block[];
+type ProjectListPayload = {
+  results?: ProjectPage[];
+  error?: string;
 };
 
 export default function Projects() {
-  const [data, setData] = useState<Page[]>([]);
-  const [selectedPage, setSelectedPage] = useState<Page | null>(null);
-  const [blocks, setBlocks] = useState<Block[]>([]);
+  const [data, setData] = useState<ProjectPage[]>([]);
   const [filter, setFilter] = useState<string | null>(null);
-  const [columnListData, setColumnListData] = useState<{ [blockId: string]: Block[] }>({});
-  const [columnChildren, setColumnChildren] = useState<{ [columnId: string]: Block[] }>({});
   const [coverLoadFailed, setCoverLoadFailed] = useState<Record<string, boolean>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [pageError, setPageError] = useState<string | null>(null);
 
   const getErrorMessage = (error: unknown, fallback: string) =>
     error instanceof Error ? error.message : fallback;
@@ -66,10 +35,10 @@ export default function Projects() {
         setLoadError(null);
 
         const response = await fetch("/api/notion", { cache: "no-store" });
-        const payload = (await response.json()) as { results?: Page[]; error?: string };
+        const payload = (await response.json()) as ProjectListPayload;
 
         if (!response.ok) {
-          throw new Error(payload.error || "프로젝트 목록을 불러오지 못했습니다.");
+          throw new Error(payload.error || PROJECT_LIST_ERROR_LABEL);
         }
 
         if (!cancelled) {
@@ -80,7 +49,7 @@ export default function Projects() {
 
         if (!cancelled) {
           setData([]);
-          setLoadError(getErrorMessage(error, "프로젝트 목록을 불러오지 못했습니다."));
+          setLoadError(getErrorMessage(error, PROJECT_LIST_ERROR_LABEL));
         }
       }
     };
@@ -93,355 +62,83 @@ export default function Projects() {
   }, []);
 
   useEffect(() => {
-    if (selectedPage) {
-      let cancelled = false;
-
-      const loadPage = async () => {
-        try {
-          setPageError(null);
-          setBlocks([]);
-
-          const response = await fetch(`/api/notion/page/${selectedPage.id}`, {
-            cache: "no-store",
-          });
-          const payload = (await response.json()) as { blocks?: Block[]; error?: string };
-
-          if (!response.ok) {
-            throw new Error(payload.error || "프로젝트 상세 정보를 불러오지 못했습니다.");
-          }
-
-          if (!cancelled) {
-            setBlocks(payload.blocks || []);
-          }
-        } catch (error) {
-          console.error("Error fetching page blocks:", error);
-
-          if (!cancelled) {
-            setBlocks([]);
-            setPageError(getErrorMessage(error, "프로젝트 상세 정보를 불러오지 못했습니다."));
-          }
-        }
-      };
-
-      loadPage();
-
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    setBlocks([]);
-    setPageError(null);
-  }, [selectedPage]);
-
-  useEffect(() => {
     setCoverLoadFailed({});
   }, [data]);
 
-  useEffect(() => {
-    setColumnListData({});
-    setColumnChildren({});
-
-    blocks.forEach((block) => {
-      if (block.type === "column_list") {
-        fetch(`/api/notion/block/${block.id}`)
-          .then(async (res) => {
-            const payload = (await res.json()) as { blocks?: Block[]; error?: string };
-
-            if (!res.ok) {
-              throw new Error(payload.error || "Failed to fetch column list.");
-            }
-
-            setColumnListData((prev) => ({ ...prev, [block.id]: payload.blocks || [] }));
-            (payload.blocks || []).forEach((column) => {
-              if (column.has_children && !columnChildren[column.id]) {
-                fetch(`/api/notion/block/${column.id}`)
-                  .then(async (childRes) => {
-                    const childPayload = (await childRes.json()) as {
-                      blocks?: Block[];
-                      error?: string;
-                    };
-
-                    if (!childRes.ok) {
-                      throw new Error(childPayload.error || "Failed to fetch column.");
-                    }
-
-                    setColumnChildren((prev) => ({ ...prev, [column.id]: childPayload.blocks || [] }));
-                  })
-                  .catch((error) => console.error("Error fetching column children:", error));
-              }
-            });
-          })
-          .catch((error) => console.error("Error fetching column_list children:", error));
-      }
-    });
-  }, [blocks]);
-
   const markCoverAsFailed = (pageId: string) => {
-    setCoverLoadFailed((prev) => {
-      if (prev[pageId]) {
-        return prev;
+    setCoverLoadFailed((previous) => {
+      if (previous[pageId]) {
+        return previous;
       }
 
       return {
-        ...prev,
+        ...previous,
         [pageId]: true,
       };
     });
   };
 
+  const tags = useMemo(
+    () =>
+      [
+        ...new Set(
+          data.flatMap((item) =>
+            (item.properties?.[PROJECT_CATEGORY_PROPERTY]?.multi_select ?? []).map((tag) => tag.name)
+          )
+        ),
+      ].sort(),
+    [data]
+  );
+
   const filteredData = filter
-    ? data.filter((item) =>
-        item.properties?.["카테고리"].multi_select.some((tag) => tag.name === filter)
-      )
+    ? data.filter((item) => getProjectCategories(item).some((tag) => tag.name === filter))
     : data;
 
   return (
     <div className="flex justify-center h-full">
-      <div className="w-[70vw] h-full flex flex-col items-center overflow-y-auto overscroll-none" style={{ WebkitOverflowScrolling: 'touch' }}>
-        {selectedPage ? (
-          <div className="w-full flex flex-col items-center pt-12 text-white pointer-events-auto">
-            <div className="w-full flex flex-col items-center gap-3 xl:gap-4 mb-12">
-              {/* <div className="fixed md:left-[15vw] px-7 py-2 z-10 rounded-full text-transparent bg-white/15 glassEffect">← 목록</div> */}
-              <button className="fixed min-w-[120px] md:left-[15vw] px-7 py-3 rounded-full z-20" onClick={() => setSelectedPage(null)}>
-                <div className="absolute inset-0 bg-black/10 glassEffect z-[-1] rounded-full"/>
-                ← 목록
+      <div
+        className="w-[70vw] h-full flex flex-col items-center overflow-y-auto overscroll-none"
+        style={{ WebkitOverflowScrolling: "touch" }}
+      >
+        <div className="w-full">
+          <div className="flex flex-col sm:flex-row gap-4 my-10 xl:my-20">
+            {tags.map((tag) => (
+              <button
+                key={tag}
+                className={`relative min-w-[120px] px-4 py-3 xl:px-6 rounded-full text-xs md:text-sm xl:text-lg font-light text-white border-0 hover:translate-y-[-4px] ${
+                  filter === tag ? "bg-white/30" : "bg-transparent text-black"
+                } pointer-events-auto`}
+                onClick={() => setFilter(filter === tag ? null : tag)}
+              >
+                <div className="absolute inset-0 bg-white/10 glassEffect z-[-1] rounded-full" />
+                {tag}
               </button>
-              <h2 className="text-3xl xl:text-5xl font-bold mt-24 md:mt-0 text-center break-keep">
-                {selectedPage.properties.이름.title[0]?.plain_text || "No Title"}
-              </h2>
-              <p className="text-md xl:text-lg whitespace-pre-wrap text-center break-keep">
-                {selectedPage.properties.참여자?.rich_text[0]?.plain_text || "No Content"}
-              </p>
-              <div className="flex flex-wrap gap-2 md:gap-3 justify-center">
-                {selectedPage.properties?.["사용 도구"]?.multi_select?.map((tag) => (
-                  <span key={tag.id} className="relative text-xs xl:text-sm px-4 py-2 rounded-full">
-                    <div className="absolute inset-0 bg-black/10 glassEffect z-[-1] rounded-full" />
-                    {tag.name}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-4 w-full xl:w-[800px] mb-24">
-              {pageError ? (
-                <p className="text-gray-300">{pageError}</p>
-              ) : blocks.length > 0 ? (
-                blocks.map((block) => {
-                  switch (block.type) {
-                    case "heading_1":
-                      return (
-                        <h1 key={block.id} className="text-3xl xl:text-4xl font-bold text-white">
-                          {block.heading_1?.rich_text.map((text, index) => (
-                            <span key={index}>{text.plain_text}</span>
-                          ))}
-                        </h1>
-                      );
-                    case "heading_2":
-                      return (
-                        <h2 key={block.id} className="text-2xl xl:text-3xl font-bold text-white">
-                          {block.heading_2?.rich_text.map((text, index) => (
-                            <span key={index}>{text.plain_text}</span>
-                          ))}
-                        </h2>
-                      );
-                    case "heading_3":
-                      return (
-                        <h3 key={block.id} className="text-xl xl:text-2xl font-bold text-white">
-                          {block.heading_3?.rich_text.map((text, index) => (
-                            <span key={index}>{text.plain_text}</span>
-                          ))}
-                        </h3>
-                      );
-                    case "paragraph":
-                      return (
-                        <p key={block.id} className="text-white">
-                          {block.paragraph?.rich_text.map((text, index) => (
-                            <span key={index}>{text.plain_text}</span>
-                          ))}
-                        </p>
-                      );
-                    case "numbered_list_item":
-                      return (
-                        <p key={block.id} className="text-white font-bold text-lg md:text-xl">
-                          {block.numbered_list_item?.rich_text.map((text, index) => (
-                            <span key={index}>{text.plain_text}</span>
-                          ))}
-                        </p>
-                      );
-                    case "image":
-                      return (
-                        <img
-                          key={block.id}
-                          src={block.image?.file.url || ""}
-                          alt={block.image?.caption || "Image"}
-                          onContextMenu={(e) => e.preventDefault()}
-                          draggable="false"
-                          className="w-full"
-                        />
-                      );
-                    case "video": {
-                      if (block.video?.type === 'file') {
-                        return (
-                          <video
-                            key={block.id}
-                            src={block.video?.file?.url || ""}
-                            onContextMenu={(e) => e.preventDefault()}
-                            draggable="false"
-                            autoPlay
-                            loop
-                            className="w-full"
-                          >
-                            Your browser does not support the video tag.
-                          </video>
-                        );
-                      } else if (block.video?.type === 'external') {
-                        const url = block.video?.external?.url;
-                        let videoId = "";
-                        if (url) {
-                          try {
-                            const urlObj = new URL(url);
-                            videoId = urlObj.searchParams.get("v") || url.split("/").pop() || "";
-                          } catch (e) {
-                            console.error(e);
-                          }
-                        }
-                        return (
-                          <iframe
-                            key={block.id}
-                            className="w-full aspect-video"
-                            src={`https://www.youtube.com/embed/${videoId}`}
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                            allowFullScreen
-                          ></iframe>
-                        );
-                      }
-                    }
-                    case "link_preview":
-                      return (
-                        <a key={block.id} href={block.link_preview?.url || ""} target="_blank">
-                          <p className="text-lg w-full font-bold underline break-words">{block.link_preview?.url}</p>
-                        </a>
-                      );
-                    case "bookmark":
-                      return (
-                        <a key={block.id} href={block.bookmark?.url || ""} target="_blank">
-                          <span className="text-lg w-full font-bold underline break-words">{block.bookmark?.url}</span>
-                        </a>
-                      );
-                    case "divider":
-                      return (
-                        <hr key={block.id} className="w-full border-t-2 border-dashed border-white/30" />
-                      );
-                    case "column_list":
-                      return (
-                        <div key={block.id} className="w-full flex flex-1 flex-col sm:flex-row gap-4">
-                          {(columnListData[block.id] || []).map((column) => (
-                            <div key={column.id} className="flex flex-1 flex-col gap-4">
-                              {(columnChildren[column.id] || []).map((childBlock) => {
-                                switch (childBlock.type) {
-                                  case "heading_1":
-                                    return (
-                                      <h1 key={childBlock.id} className="text-3xl xl:text-4xl font-bold text-white">
-                                        {childBlock.heading_1?.rich_text.map((text, index) => (
-                                          <span key={index}>{text.plain_text}</span>
-                                        ))}
-                                      </h1>
-                                    );
-                                  case "heading_2":
-                                    return (
-                                      <h2 key={childBlock.id} className="text-2xl xl:text-3xl font-bold text-white">
-                                        {childBlock.heading_2?.rich_text.map((text, index) => (
-                                          <span key={index}>{text.plain_text}</span>
-                                        ))}
-                                      </h2>
-                                    );
-                                  case "heading_3":
-                                    return (
-                                      <h3 key={childBlock.id} className="text-xl xl:text-2xl font-bold text-white">
-                                        {childBlock.heading_3?.rich_text.map((text, index) => (
-                                          <span key={index}>{text.plain_text}</span>
-                                        ))}
-                                      </h3>
-                                    );
-                                  case "paragraph":
-                                    return (
-                                      <p key={childBlock.id} className="text-white">
-                                        {childBlock.paragraph?.rich_text.map((text, index) => (
-                                          <span key={index}>{text.plain_text}</span>
-                                        ))}
-                                      </p>
-                                    );
-                                  case "image":
-                                    return (
-                                      <img
-                                        key={childBlock.id}
-                                        src={childBlock.image?.file.url || ""}
-                                        alt={childBlock.image?.caption || "Image"}
-                                        onContextMenu={(e) => e.preventDefault()}
-                                        draggable="false"
-                                        className="w-full"
-                                      />
-                                    );
-                                  case "numbered_list_item":
-                                    return (
-                                      <p key={childBlock.id} className="text-white font-bold text-lg md:text-xl">
-                                        {childBlock.numbered_list_item?.rich_text.map((text, index) => (
-                                          <span key={index}>{text.plain_text}</span>
-                                        ))}
-                                      </p>
-                                    );
-                                  default:
-                                    return null;
-                                }
-                              })}
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    default:
-                      return null;
-                  }
-                })
-              ) : (
-                <p className="text-gray-300">로딩 중...</p>
-              )}
-            </div>
+            ))}
           </div>
-        ) : (
-          <div className="w-full">
-            <div className="flex flex-col sm:flex-row gap-4 my-10 xl:my-20">
-              {[...new Set(data.flatMap(item => item.properties?.["카테고리"].multi_select.map(tag => tag.name)))].sort().map((tag) => (
-                <button
-                  key={tag}
-                  className={`relative min-w-[120px] px-4 py-3 xl:px-6 rounded-full text-xs md:text-sm xl:text-lg font-light text-white border-0 hover:translate-y-[-4px] ${filter === tag ? 'bg-white/30' : 'bg-transparent text-black'} pointer-events-auto`}
-                  onClick={() => setFilter(filter === tag ? null : tag)}
-                >
-                  <div className="absolute inset-0 bg-white/10 glassEffect z-[-1] rounded-full" />
-                  {tag}
-                </button>
-              ))}
-            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-8 w-full mb-20 pointer-events-auto">
-              {loadError ? (
-                <p className="text-gray-300 col-span-full text-center">{loadError}</p>
-              ) : filteredData.length > 0 ? (
-                filteredData
-                  .sort((a, b) => {
-                    const dateA = a.properties["날짜"]?.date?.start ? new Date(a.properties["날짜"]?.date?.start) : new Date(0);
-                    const dateB = b.properties["날짜"]?.date?.start ? new Date(b.properties["날짜"]?.date?.start) : new Date(0);
-                    return dateB.getTime() - dateA.getTime();
-                  })
-                  .map((item) => {
-                    const coverUrl = item.cover?.file?.url ?? item.cover?.external?.url ?? "";
-                    const showCoverFallback = !coverUrl || coverLoadFailed[item.id];
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-8 w-full mb-20 pointer-events-auto">
+            {loadError ? (
+              <p className="text-gray-300 col-span-full text-center">{loadError}</p>
+            ) : filteredData.length > 0 ? (
+              filteredData
+                .sort((left, right) => {
+                  const leftDate = left.properties[PROJECT_DATE_PROPERTY]?.date?.start
+                    ? new Date(left.properties[PROJECT_DATE_PROPERTY].date!.start)
+                    : new Date(0);
+                  const rightDate = right.properties[PROJECT_DATE_PROPERTY]?.date?.start
+                    ? new Date(right.properties[PROJECT_DATE_PROPERTY].date!.start)
+                    : new Date(0);
+                  return rightDate.getTime() - leftDate.getTime();
+                })
+                .map((item) => {
+                  const coverUrl = getProjectCoverUrl(item);
+                  const showCoverFallback = !coverUrl || coverLoadFailed[item.id];
 
-                    return (
-                      <div
+                  return (
+                    <Link
                       key={item.id}
+                      href={`/project/${item.id}`}
                       className="group relative aspect-[7/5] p-4 rounded-3xl cursor-pointer transition-transform hover:scale-[98%] flex items-center justify-center text-center overflow-hidden"
-                      onClick={() => setSelectedPage(item)}
                     >
                       {!showCoverFallback ? (
                         <img
@@ -455,20 +152,19 @@ export default function Projects() {
                       ) : (
                         <div className="absolute inset-0 bg-white/10 glassEffect rounded-3xl" />
                       )}
-                      <div className="absolute w-full h-full group-hover:bg-white/15 transition-opacity duration-500"></div>
-                      
+                      <div className="absolute w-full h-full group-hover:bg-white/15 transition-opacity duration-500" />
+
                       <h3 className="relative z-10 text-lg md:text-xl lg:text-2xl 2xl:text-3xl font-semibold text-transparent group-hover:text-white drop-shadow-[0_0_2px_rgba(0,0,0,0.6)] break-words leading-tight text-center">
-                        {item.properties.이름.title[0]?.plain_text || "No Name"}
+                        {getProjectTitle(item)}
                       </h3>
-                      </div>
-                    );
-                  })
-              ) : (
-                <p className="text-gray-300 col-span-full text-center">로딩 중...</p>
-              )}
-            </div>
+                    </Link>
+                  );
+                })
+            ) : (
+              <p className="text-gray-300 col-span-full text-center">{PROJECT_LOADING_LABEL}</p>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

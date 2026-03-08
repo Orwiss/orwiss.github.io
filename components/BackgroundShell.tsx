@@ -24,8 +24,23 @@ const sections = ["title", "about", "project", "link"];
 const routes = ["/", "/about", "/project", "/link"];
 
 const getLevelFromPath = (pathname: string) => {
-  const index = routes.indexOf(pathname);
-  return index === -1 ? 0 : index;
+  if (pathname === "/" || pathname.startsWith("/?")) {
+    return 0;
+  }
+
+  if (pathname.startsWith("/about")) {
+    return 1;
+  }
+
+  if (pathname.startsWith("/project")) {
+    return 2;
+  }
+
+  if (pathname.startsWith("/link")) {
+    return 3;
+  }
+
+  return 0;
 };
 
 export default function BackgroundShell({ children }: { children: React.ReactNode }) {
