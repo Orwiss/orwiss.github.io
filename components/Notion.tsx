@@ -22,7 +22,10 @@ type PageProperties = {
 type Page = {
   id: string;
   properties: PageProperties;
-  cover?: { file: { url: string } };
+  cover?: {
+    file?: { url: string };
+    external?: { url: string };
+  };
 };
 
 type Block = {
@@ -48,44 +51,122 @@ export default function Projects() {
   const [filter, setFilter] = useState<string | null>(null);
   const [columnListData, setColumnListData] = useState<{ [blockId: string]: Block[] }>({});
   const [columnChildren, setColumnChildren] = useState<{ [columnId: string]: Block[] }>({});
+  const [coverLoadFailed, setCoverLoadFailed] = useState<Record<string, boolean>>({});
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [pageError, setPageError] = useState<string | null>(null);
+
+  const getErrorMessage = (error: unknown, fallback: string) =>
+    error instanceof Error ? error.message : fallback;
 
   useEffect(() => {
-    fetch("/api/notion")
-      .then((res) => res.json())
-      .then((data: { results: Page[] }) => {
-        console.log("API Response:", data);
-        setData(data.results || []);
-      })
-      .catch((error) => console.error("Error fetching data:", error));
+    let cancelled = false;
+
+    const loadProjects = async () => {
+      try {
+        setLoadError(null);
+
+        const response = await fetch("/api/notion", { cache: "no-store" });
+        const payload = (await response.json()) as { results?: Page[]; error?: string };
+
+        if (!response.ok) {
+          throw new Error(payload.error || "프로젝트 목록을 불러오지 못했습니다.");
+        }
+
+        if (!cancelled) {
+          setData(payload.results || []);
+        }
+      } catch (error) {
+        console.error("Error fetching data:", error);
+
+        if (!cancelled) {
+          setData([]);
+          setLoadError(getErrorMessage(error, "프로젝트 목록을 불러오지 못했습니다."));
+        }
+      }
+    };
+
+    loadProjects();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     if (selectedPage) {
-      fetch(`/api/notion/page/${selectedPage.id}`)
-        .then((res) => res.json())
-        .then((data: { blocks: Block[] }) => {
-          console.log("Page and blocks:", data);
-          setBlocks(data.blocks || []);
-        })
-        .catch((error) => console.error("Error fetching page blocks:", error));
+      let cancelled = false;
+
+      const loadPage = async () => {
+        try {
+          setPageError(null);
+          setBlocks([]);
+
+          const response = await fetch(`/api/notion/page/${selectedPage.id}`, {
+            cache: "no-store",
+          });
+          const payload = (await response.json()) as { blocks?: Block[]; error?: string };
+
+          if (!response.ok) {
+            throw new Error(payload.error || "프로젝트 상세 정보를 불러오지 못했습니다.");
+          }
+
+          if (!cancelled) {
+            setBlocks(payload.blocks || []);
+          }
+        } catch (error) {
+          console.error("Error fetching page blocks:", error);
+
+          if (!cancelled) {
+            setBlocks([]);
+            setPageError(getErrorMessage(error, "프로젝트 상세 정보를 불러오지 못했습니다."));
+          }
+        }
+      };
+
+      loadPage();
+
+      return () => {
+        cancelled = true;
+      };
     }
+
+    setBlocks([]);
+    setPageError(null);
   }, [selectedPage]);
 
   useEffect(() => {
+    setCoverLoadFailed({});
+  }, [data]);
+
+  useEffect(() => {
+    setColumnListData({});
+    setColumnChildren({});
+
     blocks.forEach((block) => {
       if (block.type === "column_list") {
         fetch(`/api/notion/block/${block.id}`)
-          .then((res) => res.json())
-          .then((data: { blocks: Block[] }) => {
-            //console.log("Column list children for", block.id, data);
-            setColumnListData((prev) => ({ ...prev, [block.id]: data.blocks || [] }));
-            data.blocks.forEach((column) => {
+          .then(async (res) => {
+            const payload = (await res.json()) as { blocks?: Block[]; error?: string };
+
+            if (!res.ok) {
+              throw new Error(payload.error || "Failed to fetch column list.");
+            }
+
+            setColumnListData((prev) => ({ ...prev, [block.id]: payload.blocks || [] }));
+            (payload.blocks || []).forEach((column) => {
               if (column.has_children && !columnChildren[column.id]) {
                 fetch(`/api/notion/block/${column.id}`)
-                  .then((res) => res.json())
-                  .then((data: { blocks: Block[] }) => {
-                    //console.log(`Fetched children for column ${column.id}:`, data.blocks);
-                    setColumnChildren((prev) => ({ ...prev, [column.id]: data.blocks || [] }));
+                  .then(async (childRes) => {
+                    const childPayload = (await childRes.json()) as {
+                      blocks?: Block[];
+                      error?: string;
+                    };
+
+                    if (!childRes.ok) {
+                      throw new Error(childPayload.error || "Failed to fetch column.");
+                    }
+
+                    setColumnChildren((prev) => ({ ...prev, [column.id]: childPayload.blocks || [] }));
                   })
                   .catch((error) => console.error("Error fetching column children:", error));
               }
@@ -95,6 +176,19 @@ export default function Projects() {
       }
     });
   }, [blocks]);
+
+  const markCoverAsFailed = (pageId: string) => {
+    setCoverLoadFailed((prev) => {
+      if (prev[pageId]) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        [pageId]: true,
+      };
+    });
+  };
 
   const filteredData = filter
     ? data.filter((item) =>
@@ -130,7 +224,9 @@ export default function Projects() {
             </div>
 
             <div className="flex flex-col gap-4 w-full xl:w-[800px] mb-24">
-              {blocks.length > 0 ? (
+              {pageError ? (
+                <p className="text-gray-300">{pageError}</p>
+              ) : blocks.length > 0 ? (
                 blocks.map((block) => {
                   switch (block.type) {
                     case "heading_1":
@@ -328,29 +424,45 @@ export default function Projects() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-8 w-full mb-20 pointer-events-auto">
-              {filteredData.length > 0 ? (
+              {loadError ? (
+                <p className="text-gray-300 col-span-full text-center">{loadError}</p>
+              ) : filteredData.length > 0 ? (
                 filteredData
                   .sort((a, b) => {
                     const dateA = a.properties["날짜"]?.date?.start ? new Date(a.properties["날짜"]?.date?.start) : new Date(0);
                     const dateB = b.properties["날짜"]?.date?.start ? new Date(b.properties["날짜"]?.date?.start) : new Date(0);
                     return dateB.getTime() - dateA.getTime();
                   })
-                  .map((item) => (
-                    <div
+                  .map((item) => {
+                    const coverUrl = item.cover?.file?.url ?? item.cover?.external?.url ?? "";
+                    const showCoverFallback = !coverUrl || coverLoadFailed[item.id];
+
+                    return (
+                      <div
                       key={item.id}
-                      style={{ backgroundImage: `${item.cover?.file.url ? `url(${item.cover?.file.url})` : "none"}` }}
                       className="group relative aspect-[7/5] p-4 rounded-3xl cursor-pointer transition-transform hover:scale-[98%] flex items-center justify-center text-center overflow-hidden"
                       onClick={() => setSelectedPage(item)}
                     >
-                      <div className="absolute inset-0 bg-cover bg-center rounded-3xl" style={{ backgroundImage: item.cover?.file.url ? `url(${item.cover.file.url})` : "none" }}></div>
-                      {!item.cover?.file.url && ( <div className="absolute inset-0 bg-white/10 glassEffect z-[-1] rounded-3xl" /> )}
+                      {!showCoverFallback ? (
+                        <img
+                          src={coverUrl}
+                          alt=""
+                          loading="lazy"
+                          onError={() => markCoverAsFailed(item.id)}
+                          className="absolute inset-0 w-full h-full object-cover rounded-3xl"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <div className="absolute inset-0 bg-white/10 glassEffect rounded-3xl" />
+                      )}
                       <div className="absolute w-full h-full group-hover:bg-white/15 transition-opacity duration-500"></div>
                       
-                      <h3 className="text-lg md:text-xl lg:text-2xl 2xl:text-3xl font-semibold text-transparent group-hover:text-white drop-shadow-[0_0_2px_rgba(0,0,0,0.6)] break-words leading-tight text-center">
+                      <h3 className="relative z-10 text-lg md:text-xl lg:text-2xl 2xl:text-3xl font-semibold text-transparent group-hover:text-white drop-shadow-[0_0_2px_rgba(0,0,0,0.6)] break-words leading-tight text-center">
                         {item.properties.이름.title[0]?.plain_text || "No Name"}
                       </h3>
-                    </div>
-                  ))
+                      </div>
+                    );
+                  })
               ) : (
                 <p className="text-gray-300 col-span-full text-center">로딩 중...</p>
               )}

@@ -1,40 +1,63 @@
-// app/api/upstash/saveTextData/route.ts
-import { NextResponse } from 'next/server';
-import { Redis } from '@upstash/redis';
+import { NextResponse } from "next/server";
+import { Redis } from "@upstash/redis";
+import { noStoreHeaders } from "@/lib/http";
 
-const redis = new Redis({
-  url: process.env.KV_REST_API_URL!,
-  token: process.env.KV_REST_API_TOKEN!,
-});
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
-const key = 'textList';
+const key = "textList";
+
+function createRedisClient() {
+  const url = process.env.KV_REST_API_URL;
+  const token = process.env.KV_REST_API_TOKEN;
+
+  if (!url || !token) {
+    throw new Error("Upstash Redis is not configured.");
+  }
+
+  return new Redis({ url, token });
+}
 
 export async function POST(req: Request) {
   try {
+    const redis = createRedisClient();
     const { value } = await req.json();
 
-    if (!value || typeof value !== 'string') {
-      return NextResponse.json({ error: 'value가 필요합니다.' }, { status: 400 });
+    if (!value || typeof value !== "string") {
+      return NextResponse.json(
+        { error: "A non-empty string value is required." },
+        { status: 400, headers: noStoreHeaders }
+      );
     }
 
     const list = (await redis.get<string[]>(key)) || [];
 
     if (!list.includes(value)) {
       await redis.set(key, [...list, value]);
-      return NextResponse.json({ success: true });
-    } else {
-      return NextResponse.json({ success: false, message: '중복된 텍스트입니다.' });
+      return NextResponse.json({ success: true }, { headers: noStoreHeaders });
     }
+
+    return NextResponse.json(
+      { success: false, message: "The provided value already exists." },
+      { headers: noStoreHeaders }
+    );
   } catch (error) {
-    return NextResponse.json({ error: '서버 오류', detail: String(error) }, { status: 500 });
+    return NextResponse.json(
+      { error: "Server error", detail: String(error) },
+      { status: 500, headers: noStoreHeaders }
+    );
   }
 }
 
 export async function GET() {
   try {
+    const redis = createRedisClient();
     const data = await redis.get(key);
-    return NextResponse.json({ data });
+    return NextResponse.json({ data }, { headers: noStoreHeaders });
   } catch (error) {
-    return NextResponse.json({ error: '서버 오류', detail: String(error) }, { status: 500 });
+    return NextResponse.json(
+      { error: "Server error", detail: String(error) },
+      { status: 500, headers: noStoreHeaders }
+    );
   }
 }

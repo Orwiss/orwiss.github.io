@@ -36,6 +36,8 @@ export default function BackgroundShell({ children }: { children: React.ReactNod
   const [black, setBlack] = useState<"black" | "none">("black");
   const [projectNum, setProjectNum] = useState<number | null>(null);
   const initialLoad = useRef(true);
+  const transitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingRouteRef = useRef<string | null>(null);
 
   useEffect(() => {
     setProjectNum(Math.floor(Math.random() * projects.length));
@@ -46,6 +48,7 @@ export default function BackgroundShell({ children }: { children: React.ReactNod
     setLevel(newLevel);
     setBlack("black");
     setFadeState("fade-in");
+    pendingRouteRef.current = null;
 
     trackClarityEvent("section:view", {
       section: sections[newLevel],
@@ -55,11 +58,31 @@ export default function BackgroundShell({ children }: { children: React.ReactNod
     initialLoad.current = false;
   }, [pathname]);
 
+  useEffect(() => {
+    return () => {
+      if (transitionTimeoutRef.current) {
+        clearTimeout(transitionTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const changeComponent = (newLevel: number) => {
+    const nextRoute = routes[newLevel];
+
+    if (nextRoute === pathname || pendingRouteRef.current) {
+      return;
+    }
+
+    pendingRouteRef.current = nextRoute;
     setFadeState("fade-out");
-    setTimeout(() => {
-      router.push(routes[newLevel]);
-      setFadeState("fade-in");
+
+    if (transitionTimeoutRef.current) {
+      clearTimeout(transitionTimeoutRef.current);
+    }
+
+    transitionTimeoutRef.current = setTimeout(() => {
+      transitionTimeoutRef.current = null;
+      router.push(nextRoute);
     }, 500);
   };
 

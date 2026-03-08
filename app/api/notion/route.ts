@@ -1,22 +1,64 @@
 import { NextResponse } from "next/server";
-import { Client } from "@notionhq/client";
+import { noStoreHeaders } from "@/lib/http";
+import {
+  createNotionClient,
+  getNotionDatabaseId,
+  proxyNotionRequest,
+  replacePageCoversWithProxy,
+  shouldProxyNotionInDevelopment,
+} from "@/lib/notion";
 
-const NOTION_API_KEY = process.env.NOTION_API_KEY;
-const NOTION_DB_ID = process.env.NOTION_TEMP_DB_ID as string;
-const notion = new Client({ auth: NOTION_API_KEY });
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET() {
   try {
+    if (shouldProxyNotionInDevelopment()) {
+      const proxied = await proxyNotionRequest("/api/notion");
+      const payload = JSON.parse(proxied.body) as {
+        results?: Array<{
+          id: string;
+          cover?: {
+            type?: "file" | "external";
+            file?: { url?: string };
+            external?: { url?: string };
+          };
+        }>;
+      };
+
+      return NextResponse.json(
+        {
+          ...payload,
+          results: replacePageCoversWithProxy(payload.results ?? []),
+        },
+        {
+          status: proxied.status,
+          headers: {
+            ...noStoreHeaders,
+            "Content-Type": proxied.contentType,
+          },
+        }
+      );
+    }
+
+    const notion = createNotionClient();
     const response = await notion.databases.query({
-      database_id: NOTION_DB_ID,
+      database_id: getNotionDatabaseId(),
     });
-    return NextResponse.json(response, {
-      headers: {
-        'Cache-Control': 'no-store, max-age=0',
+    return NextResponse.json(
+      {
+        ...response,
+        results: replacePageCoversWithProxy(response.results),
       },
-    });
+      {
+        headers: noStoreHeaders,
+      }
+    );
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ error: "Failed to fetch Notion data" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to fetch Notion data" },
+      { status: 500, headers: noStoreHeaders }
+    );
   }
 }

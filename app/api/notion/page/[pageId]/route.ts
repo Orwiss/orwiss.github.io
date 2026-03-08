@@ -1,23 +1,53 @@
 import { NextResponse } from "next/server";
-import { Client } from "@notionhq/client";
+import { noStoreHeaders } from "@/lib/http";
+import {
+  createNotionClient,
+  proxyNotionRequest,
+  shouldProxyNotionInDevelopment,
+} from "@/lib/notion";
 
-const NOTION_API_KEY = process.env.NOTION_API_KEY;
-const notion = new Client({ auth: NOTION_API_KEY });
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
-export async function GET(request: Request) {  
-  const url = new URL(request.url);
-  const page_id = url.pathname.split("/")[4];
+type RouteContext = {
+  params: {
+    pageId: string;
+  };
+};
 
+export async function GET(_request: Request, { params }: RouteContext) {
   try {
-    const pageResponse = await notion.pages.retrieve({ page_id: page_id });
-    const blocksResponse = await notion.blocks.children.list({ block_id: page_id });
+    if (shouldProxyNotionInDevelopment()) {
+      const proxied = await proxyNotionRequest(`/api/notion/page/${params.pageId}`);
+      return new NextResponse(proxied.body, {
+        status: proxied.status,
+        headers: {
+          ...noStoreHeaders,
+          "Content-Type": proxied.contentType,
+        },
+      });
+    }
 
-    return NextResponse.json({
-      page: pageResponse,
-      blocks: blocksResponse.results,
+    const notion = createNotionClient();
+    const pageResponse = await notion.pages.retrieve({ page_id: params.pageId });
+    const blocksResponse = await notion.blocks.children.list({
+      block_id: params.pageId,
     });
+
+    return NextResponse.json(
+      {
+        page: pageResponse,
+        blocks: blocksResponse.results,
+      },
+      {
+        headers: noStoreHeaders,
+      }
+    );
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ error: "Failed to fetch page details" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to fetch page details" },
+      { status: 500, headers: noStoreHeaders }
+    );
   }
 }

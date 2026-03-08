@@ -4,9 +4,36 @@ import BackgroundShell from "@/components/BackgroundShell";
 
 import "./globals.css";
 
+const siteUrl = "https://orwiss.xyz";
+const siteTitle = "Orwiss | Sunghun Park";
+const siteDescription =
+  "Portfolio of Sunghun Park (Orwiss), featuring generative art, interactive experiments, exhibitions, and design projects.";
+
 export const metadata: Metadata = {
-  title: "Sunghun Park",
-  description: "Website",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: siteTitle,
+    template: "%s | Orwiss",
+  },
+  description: siteDescription,
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    title: siteTitle,
+    description: siteDescription,
+    url: siteUrl,
+    siteName: "Orwiss",
+    locale: "ko_KR",
+    type: "website",
+    images: ["/images/orwiss.png"],
+  },
+  twitter: {
+    card: "summary",
+    title: siteTitle,
+    description: siteDescription,
+    images: ["/images/orwiss.png"],
+  },
 };
 
 export default function RootLayout({

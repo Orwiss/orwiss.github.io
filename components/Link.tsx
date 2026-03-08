@@ -6,23 +6,25 @@ import { trackClarityEvent } from '@/lib/clarity';
 type LinkType = {
   name: string;
   icon: string;
+  iconClassName?: string;
   url: string;
 };
 
 const links: LinkType[] = [
   {
     name: 'Instagram',
-    icon: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/Instagram_icon.png/768px-Instagram_icon.png',
+    icon: '/images/Instagram.png',
     url: 'https://www.instagram.com/dv5e1n',
   },
   {
     name: 'OpenProcessing',
-    icon: 'https://openprocessing.org/assets/img/logo/logo_36x30_color@2x.png',
+    icon: '/images/openprocessing.png',
     url: 'https://openprocessing.org/user/280258',
   },
   {
     name: 'GitHub',
-    icon: 'https://images.icon-icons.com/3685/PNG/512/github_logo_icon_229278.png',
+    icon: '/images/github.png',
+    iconClassName: 'brightness-0 invert',
     url: 'https://github.com/Orwiss',
   },
 ];
@@ -43,7 +45,7 @@ const Link = () => {
             <img
               src={link.icon}
               alt={link.name}
-              className="w-auto h-8 md:h-10 mr-2 lg:mr-4"
+              className={`w-auto h-8 md:h-10 mr-2 lg:mr-4 ${link.iconClassName ?? ''}`}
             />
             <span className="text-sm md:text-lg">{link.name}</span>
           </a>
