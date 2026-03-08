@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { primeProjectDetail, primeProjectPreview } from "@/lib/projectDetailClient";
 import {
   PROJECT_CATEGORY_PROPERTY,
   PROJECT_DATE_PROPERTY,
-  PROJECT_LIST_ERROR_LABEL,
   PROJECT_LOADING_LABEL,
   ProjectPage,
   getProjectCategories,
@@ -13,53 +14,18 @@ import {
   getProjectTitle,
 } from "@/lib/projectNotion";
 
-type ProjectListPayload = {
-  results?: ProjectPage[];
-  error?: string;
+type ProjectsProps = {
+  initialData: ProjectPage[];
+  initialError?: string | null;
 };
 
-export default function Projects() {
-  const [data, setData] = useState<ProjectPage[]>([]);
+export default function Projects({ initialData, initialError = null }: ProjectsProps) {
+  const router = useRouter();
   const [filter, setFilter] = useState<string | null>(null);
   const [coverLoadFailed, setCoverLoadFailed] = useState<Record<string, boolean>>({});
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  const getErrorMessage = (error: unknown, fallback: string) =>
-    error instanceof Error ? error.message : fallback;
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadProjects = async () => {
-      try {
-        setLoadError(null);
-
-        const response = await fetch("/api/notion", { cache: "no-store" });
-        const payload = (await response.json()) as ProjectListPayload;
-
-        if (!response.ok) {
-          throw new Error(payload.error || PROJECT_LIST_ERROR_LABEL);
-        }
-
-        if (!cancelled) {
-          setData(payload.results || []);
-        }
-      } catch (error) {
-        console.error("Error fetching data:", error);
-
-        if (!cancelled) {
-          setData([]);
-          setLoadError(getErrorMessage(error, PROJECT_LIST_ERROR_LABEL));
-        }
-      }
-    };
-
-    loadProjects();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const prefetchedProjectIds = useRef(new Set<string>());
+  const data = initialData;
+  const loadError = initialError;
 
   useEffect(() => {
     setCoverLoadFailed({});
@@ -76,6 +42,21 @@ export default function Projects() {
         [pageId]: true,
       };
     });
+  };
+
+  const prepareProjectDetail = (item: ProjectPage, shouldWarmData = false) => {
+    primeProjectPreview(item);
+
+    if (shouldWarmData) {
+      primeProjectDetail(item);
+    }
+
+    if (prefetchedProjectIds.current.has(item.id)) {
+      return;
+    }
+
+    prefetchedProjectIds.current.add(item.id);
+    router.prefetch(`/project/${item.id}`);
   };
 
   const tags = useMemo(
@@ -138,6 +119,11 @@ export default function Projects() {
                     <Link
                       key={item.id}
                       href={`/project/${item.id}`}
+                      prefetch={false}
+                      onMouseEnter={() => prepareProjectDetail(item, true)}
+                      onFocus={() => prepareProjectDetail(item, true)}
+                      onTouchStart={() => prepareProjectDetail(item, true)}
+                      onClick={() => prepareProjectDetail(item, true)}
                       className="group relative aspect-[7/5] p-4 rounded-3xl cursor-pointer transition-transform hover:scale-[98%] flex items-center justify-center text-center overflow-hidden"
                     >
                       {!showCoverFallback ? (

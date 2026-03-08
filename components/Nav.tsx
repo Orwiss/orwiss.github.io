@@ -12,10 +12,10 @@ interface NavProps {
 }
 
 const NavButton: React.FC<NavProps> = ({ level, pages, changeComponent, direction, sections }) => {
+  const arrowLabel = direction === "left" ? "\u2190" : "\u2192";
+
   const handleClick = () => {
-    const newLevel = direction === "left" 
-      ? (level - 1 + pages) % pages 
-      : (level + 1) % pages;
+    const newLevel = direction === "left" ? (level - 1 + pages) % pages : (level + 1) % pages;
 
     trackClarityEvent("nav:click", {
       direction,
@@ -28,17 +28,15 @@ const NavButton: React.FC<NavProps> = ({ level, pages, changeComponent, directio
 
   return (
     <>
-      {/* <div className={`absolute ${direction === "left" ? "left-[4%]" : "right-[4%]"} bottom-[10%]
-          w-[80px] h-[80px] xl:w-[100px] xl:h-[100px] rounded-full z-10 glassEffect`}></div> */}
       <div
-          className={`absolute ${direction === "left" ? "left-[4%]" : "right-[4%]"} bottom-[10%]
+        className={`absolute ${direction === "left" ? "left-[4%]" : "right-[4%]"} bottom-[10%]
           w-[80px] h-[80px] lg:w-[100px] lg:h-[100px] xl:w-[120px] xl:h-[120px] rounded-full font-semibold
           hover:scale-110 z-20 flex items-center justify-center
           text-5xl xl:text-6xl transition-all duration-300 pointer-events-auto select-none`}
-          onClick={handleClick}
-        >
+        onClick={handleClick}
+      >
         <div className="absolute inset-0 bg-black/20 glassEffect z-[-1] rounded-full" />
-        <div>{direction === "left" ? "←" : "→"}</div>
+        <div>{arrowLabel}</div>
       </div>
     </>
   );

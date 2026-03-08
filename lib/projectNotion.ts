@@ -1,3 +1,12 @@
+import {
+  createNotionClient,
+  getNotionDatabaseId,
+  proxyNotionJson,
+  replacePageCoversWithProxy,
+  shouldProxyNotionInDevelopment,
+  shouldUseRemoteNotionFallback,
+} from "@/lib/notion";
+
 export type MultiSelectTag = {
   id: string;
   name: string;
@@ -55,6 +64,29 @@ export const PROJECT_LIST_ERROR_LABEL =
 export const PROJECT_DETAIL_ERROR_LABEL =
   "\uD504\uB85C\uC81D\uD2B8 \uC0C1\uC138 \uC815\uBCF4\uB97C \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.";
 
+type ProjectPagePayload = {
+  results?: ProjectPage[];
+  page?: ProjectPage;
+  blocks?: ProjectBlock[];
+  error?: string;
+};
+
+type ProjectBlockPayload = {
+  blocks?: ProjectBlock[];
+  error?: string;
+};
+
+export type ProjectDetailData = {
+  page: ProjectPage | null;
+  blocks: ProjectBlock[];
+  error: string | null;
+};
+
+export type ProjectListData = {
+  results: ProjectPage[];
+  error: string | null;
+};
+
 export function getProjectTitle(page: ProjectPage) {
   return page.properties?.[PROJECT_TITLE_PROPERTY]?.title?.[0]?.plain_text ?? "No Name";
 }
@@ -77,4 +109,118 @@ export function getProjectParticipants(page: ProjectPage) {
 
 export function getProjectCoverUrl(page: ProjectPage) {
   return page.cover?.file?.url ?? page.cover?.external?.url ?? "";
+}
+
+async function fetchProjectPagePayload(pageId: string) {
+  if (shouldProxyNotionInDevelopment() || shouldUseRemoteNotionFallback()) {
+    return proxyNotionJson<ProjectPagePayload>(`/api/notion/page/${pageId}`);
+  }
+
+  const notion = createNotionClient();
+  const [pageResponse, blocksResponse] = await Promise.all([
+    notion.pages.retrieve({ page_id: pageId }),
+    notion.blocks.children.list({ block_id: pageId }),
+  ]);
+
+  return {
+    page: pageResponse as ProjectPage,
+    blocks: blocksResponse.results as ProjectBlock[],
+  };
+}
+
+export async function getProjectListData(): Promise<ProjectListData> {
+  try {
+    if (shouldProxyNotionInDevelopment() || shouldUseRemoteNotionFallback()) {
+      const payload = await proxyNotionJson<ProjectPagePayload>("/api/notion", {
+        next: { revalidate: 300 },
+      });
+
+      return {
+        results: payload.results ?? [],
+        error: null,
+      };
+    }
+
+    const notion = createNotionClient();
+    const response = await notion.databases.query({
+      database_id: getNotionDatabaseId(),
+    });
+
+    return {
+      results: replacePageCoversWithProxy(response.results as ProjectPage[]),
+      error: null,
+    };
+  } catch (error) {
+    console.error("Error fetching project list:", error);
+
+    return {
+      results: [],
+      error: PROJECT_LIST_ERROR_LABEL,
+    };
+  }
+}
+
+async function fetchProjectBlockPayload(blockId: string) {
+  if (shouldProxyNotionInDevelopment() || shouldUseRemoteNotionFallback()) {
+    return proxyNotionJson<ProjectBlockPayload>(`/api/notion/block/${blockId}`);
+  }
+
+  const notion = createNotionClient();
+  const response = await notion.blocks.children.list({ block_id: blockId });
+
+  return {
+    blocks: response.results as ProjectBlock[],
+  };
+}
+
+async function hydrateProjectBlocks(blocks: ProjectBlock[]) {
+  return Promise.all(
+    blocks.map(async (block) => {
+      if (block.type !== "column_list") {
+        return block;
+      }
+
+      const columnListPayload = await fetchProjectBlockPayload(block.id);
+      const columns = columnListPayload.blocks || [];
+
+      const hydratedColumns = await Promise.all(
+        columns.map(async (column) => {
+          if (!column.has_children) {
+            return column;
+          }
+
+          const childPayload = await fetchProjectBlockPayload(column.id);
+          return {
+            ...column,
+            children: childPayload.blocks || [],
+          };
+        })
+      );
+
+      return {
+        ...block,
+        children: hydratedColumns,
+      };
+    })
+  );
+}
+
+export async function getProjectDetailData(pageId: string): Promise<ProjectDetailData> {
+  try {
+    const payload = await fetchProjectPagePayload(pageId);
+    const blocks = await hydrateProjectBlocks(payload.blocks || []);
+
+    return {
+      page: payload.page || null,
+      blocks,
+      error: null,
+    };
+  } catch (error) {
+    console.error("Error fetching project detail:", error);
+    return {
+      page: null,
+      blocks: [],
+      error: PROJECT_DETAIL_ERROR_LABEL,
+    };
+  }
 }

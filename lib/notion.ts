@@ -35,16 +35,34 @@ export function shouldProxyNotionInDevelopment() {
   return process.env.NODE_ENV !== "production" && !hasNotionConfig();
 }
 
+export function shouldUseRemoteNotionFallback() {
+  return !hasNotionConfig() && !process.env.VERCEL_ENV;
+}
+
 export function getNotionProxyOrigin() {
   return NOTION_PROXY_ORIGIN;
 }
 
-export async function proxyNotionRequest(pathname: string) {
+type ProxyNotionRequestOptions = RequestInit & {
+  next?: {
+    revalidate?: number;
+  };
+};
+
+export async function proxyNotionRequest(
+  pathname: string,
+  options?: ProxyNotionRequestOptions
+) {
   const proxyUrl = new URL(pathname, NOTION_PROXY_ORIGIN);
+  const cacheOption =
+    options?.cache ?? (typeof options?.next?.revalidate === "number" ? undefined : "no-store");
+
   const response = await fetch(proxyUrl, {
-    cache: "no-store",
+    ...options,
+    ...(cacheOption ? { cache: cacheOption } : {}),
     headers: {
       Accept: "application/json",
+      ...(options?.headers ?? {}),
     },
   });
 
@@ -55,8 +73,11 @@ export async function proxyNotionRequest(pathname: string) {
   };
 }
 
-export async function proxyNotionJson<T>(pathname: string) {
-  const proxied = await proxyNotionRequest(pathname);
+export async function proxyNotionJson<T>(
+  pathname: string,
+  options?: ProxyNotionRequestOptions
+) {
+  const proxied = await proxyNotionRequest(pathname, options);
 
   if (proxied.status < 200 || proxied.status >= 300) {
     throw new Error(`Failed to proxy Notion request for ${pathname}.`);

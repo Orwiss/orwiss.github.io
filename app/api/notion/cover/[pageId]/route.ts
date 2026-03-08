@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { noStoreHeaders } from "@/lib/http";
+import { createCacheHeaders, noStoreHeaders } from "@/lib/http";
 import {
   createNotionClient,
   getCoverUrlFromPage,
@@ -10,6 +10,8 @@ import {
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+const coverCacheHeaders = createCacheHeaders(3600, 86400, 604800);
 
 type RouteContext = {
   params: {
@@ -41,7 +43,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
       }).catch(() => null);
 
       if (liveCoverResponse?.ok && liveCoverResponse.body) {
-        const headers = new Headers(noStoreHeaders);
+        const headers = new Headers(coverCacheHeaders);
         const contentType = liveCoverResponse.headers.get("content-type");
 
         if (contentType) {
@@ -90,7 +92,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
       );
     }
 
-    const headers = new Headers(noStoreHeaders);
+    const headers = new Headers(coverCacheHeaders);
     const contentType = coverResponse.headers.get("content-type");
 
     if (contentType) {

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Projects from "@/components/Notion";
+import { getProjectListData } from "@/lib/projectNotion";
 
 export const revalidate = 300;
 export const metadata: Metadata = {
@@ -11,6 +12,8 @@ export const metadata: Metadata = {
   },
 };
 
-export default function ProjectPage() {
-  return <Projects />;
+export default async function ProjectPage() {
+  const { results, error } = await getProjectListData();
+
+  return <Projects initialData={results} initialError={error} />;
 }

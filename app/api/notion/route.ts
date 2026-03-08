@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { noStoreHeaders } from "@/lib/http";
+import { createCacheHeaders, noStoreHeaders } from "@/lib/http";
 import {
   createNotionClient,
   getNotionDatabaseId,
@@ -10,6 +10,8 @@ import {
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+const listCacheHeaders = createCacheHeaders(300, 300, 3600);
 
 export async function GET() {
   try {
@@ -34,7 +36,7 @@ export async function GET() {
         {
           status: proxied.status,
           headers: {
-            ...noStoreHeaders,
+            ...listCacheHeaders,
             "Content-Type": proxied.contentType,
           },
         }
@@ -51,7 +53,7 @@ export async function GET() {
         results: replacePageCoversWithProxy(response.results),
       },
       {
-        headers: noStoreHeaders,
+        headers: listCacheHeaders,
       }
     );
   } catch (error) {

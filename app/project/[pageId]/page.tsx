@@ -7,7 +7,7 @@ type ProjectDetailPageProps = {
   };
 };
 
-export function generateMetadata({ params }: ProjectDetailPageProps): Metadata {
+export async function generateMetadata({ params }: ProjectDetailPageProps): Promise<Metadata> {
   return {
     title: "Project",
     description: "Project details for Sunghun Park (Orwiss).",

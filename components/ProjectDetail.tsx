@@ -3,29 +3,22 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
-  PROJECT_DETAIL_ERROR_LABEL,
   PROJECT_LIST_LABEL,
   PROJECT_LOADING_LABEL,
-  ProjectBlock,
-  ProjectPage,
+  type ProjectBlock,
+  type ProjectPage,
   getProjectParticipants,
   getProjectTitle,
   getProjectTools,
 } from "@/lib/projectNotion";
+import {
+  getCachedProjectDetail,
+  getProjectPreview,
+  loadProjectDetail,
+} from "@/lib/projectDetailClient";
 
 type ProjectDetailProps = {
   pageId: string;
-};
-
-type ProjectPagePayload = {
-  page?: ProjectPage;
-  blocks?: ProjectBlock[];
-  error?: string;
-};
-
-type ProjectBlockPayload = {
-  blocks?: ProjectBlock[];
-  error?: string;
 };
 
 function renderRichText(texts?: { plain_text: string }[]) {
@@ -38,7 +31,6 @@ function renderVideo(block: ProjectBlock) {
       <video
         key={block.id}
         src={block.video.file?.url || ""}
-        onContextMenu={(event) => event.preventDefault()}
         draggable="false"
         autoPlay
         loop
@@ -76,11 +68,7 @@ function renderVideo(block: ProjectBlock) {
   return null;
 }
 
-function renderBlock(
-  block: ProjectBlock,
-  columnListData: Record<string, ProjectBlock[]>,
-  columnChildren: Record<string, ProjectBlock[]>
-) {
+function renderBlock(block: ProjectBlock) {
   switch (block.type) {
     case "heading_1":
       return (
@@ -118,7 +106,6 @@ function renderBlock(
           key={block.id}
           src={block.image?.file?.url || ""}
           alt={block.image?.caption || "Image"}
-          onContextMenu={(event) => event.preventDefault()}
           draggable="false"
           className="w-full"
         />
@@ -142,11 +129,9 @@ function renderBlock(
     case "column_list":
       return (
         <div key={block.id} className="w-full flex flex-1 flex-col sm:flex-row gap-4">
-          {(columnListData[block.id] || []).map((column) => (
+          {(block.children || []).map((column) => (
             <div key={column.id} className="flex flex-1 flex-col gap-4">
-              {(columnChildren[column.id] || []).map((childBlock) =>
-                renderBlock(childBlock, columnListData, columnChildren)
-              )}
+              {(column.children || []).map((childBlock) => renderBlock(childBlock))}
             </div>
           ))}
         </div>
@@ -157,93 +142,46 @@ function renderBlock(
 }
 
 export default function ProjectDetail({ pageId }: ProjectDetailProps) {
-  const [page, setPage] = useState<ProjectPage | null>(null);
-  const [blocks, setBlocks] = useState<ProjectBlock[]>([]);
-  const [pageError, setPageError] = useState<string | null>(null);
-  const [columnListData, setColumnListData] = useState<Record<string, ProjectBlock[]>>({});
-  const [columnChildren, setColumnChildren] = useState<Record<string, ProjectBlock[]>>({});
-
-  const getErrorMessage = (error: unknown, fallback: string) =>
-    error instanceof Error ? error.message : fallback;
+  const cachedDetail = getCachedProjectDetail(pageId);
+  const [page, setPage] = useState<ProjectPage | null>(
+    () => cachedDetail?.page ?? getProjectPreview(pageId)
+  );
+  const [blocks, setBlocks] = useState<ProjectBlock[]>(() => cachedDetail?.blocks ?? []);
+  const [error, setError] = useState<string | null>(() => cachedDetail?.error ?? null);
+  const [isLoading, setIsLoading] = useState(() => !cachedDetail?.blocks.length);
 
   useEffect(() => {
+    const cached = getCachedProjectDetail(pageId);
+    if (cached) {
+      setPage(cached.page ?? getProjectPreview(pageId));
+      setBlocks(cached.blocks);
+      setError(cached.error);
+      setIsLoading(false);
+      return;
+    }
+
+    setPage(getProjectPreview(pageId));
+    setBlocks([]);
+    setError(null);
+    setIsLoading(true);
+
     let cancelled = false;
 
-    const loadPage = async () => {
-      try {
-        setPageError(null);
-        setBlocks([]);
-        setPage(null);
-
-        const response = await fetch(`/api/notion/page/${pageId}`, {
-          cache: "no-store",
-        });
-        const payload = (await response.json()) as ProjectPagePayload;
-
-        if (!response.ok) {
-          throw new Error(payload.error || PROJECT_DETAIL_ERROR_LABEL);
-        }
-
-        if (!cancelled) {
-          setPage(payload.page ?? null);
-          setBlocks(payload.blocks || []);
-        }
-      } catch (error) {
-        console.error("Error fetching page blocks:", error);
-
-        if (!cancelled) {
-          setBlocks([]);
-          setPage(null);
-          setPageError(getErrorMessage(error, PROJECT_DETAIL_ERROR_LABEL));
-        }
+    void loadProjectDetail(pageId).then((detail) => {
+      if (cancelled) {
+        return;
       }
-    };
 
-    loadPage();
+      setPage(detail.page ?? getProjectPreview(pageId));
+      setBlocks(detail.blocks);
+      setError(detail.error);
+      setIsLoading(false);
+    });
 
     return () => {
       cancelled = true;
     };
   }, [pageId]);
-
-  useEffect(() => {
-    setColumnListData({});
-    setColumnChildren({});
-
-    blocks.forEach((block) => {
-      if (block.type === "column_list") {
-        fetch(`/api/notion/block/${block.id}`)
-          .then(async (response) => {
-            const payload = (await response.json()) as ProjectBlockPayload;
-
-            if (!response.ok) {
-              throw new Error(payload.error || "Failed to fetch column list.");
-            }
-
-            setColumnListData((previous) => ({ ...previous, [block.id]: payload.blocks || [] }));
-            (payload.blocks || []).forEach((column) => {
-              if (column.has_children && !columnChildren[column.id]) {
-                fetch(`/api/notion/block/${column.id}`)
-                  .then(async (childResponse) => {
-                    const childPayload = (await childResponse.json()) as ProjectBlockPayload;
-
-                    if (!childResponse.ok) {
-                      throw new Error(childPayload.error || "Failed to fetch column.");
-                    }
-
-                    setColumnChildren((previous) => ({
-                      ...previous,
-                      [column.id]: childPayload.blocks || [],
-                    }));
-                  })
-                  .catch((error) => console.error("Error fetching column children:", error));
-              }
-            });
-          })
-          .catch((error) => console.error("Error fetching column_list children:", error));
-      }
-    });
-  }, [blocks]);
 
   return (
     <div className="flex justify-center h-full">
@@ -253,13 +191,15 @@ export default function ProjectDetail({ pageId }: ProjectDetailProps) {
       >
         <div className="w-full flex flex-col items-center pt-12 text-white pointer-events-auto">
           <div className="w-full flex flex-col items-center gap-3 xl:gap-4 mb-12">
-            <Link
-              href="/project"
-              className="fixed min-w-[120px] md:left-[15vw] px-7 py-3 rounded-full z-20 pointer-events-auto"
-            >
-              <div className="absolute inset-0 bg-black/10 glassEffect z-[-1] rounded-full" />
-              {PROJECT_LIST_LABEL}
-            </Link>
+            <div className="fixed md:left-[15vw] z-20 pointer-events-auto">
+              <Link
+                href="/project"
+                className="relative min-w-[120px] px-7 py-3 rounded-full inline-flex items-center justify-center gap-1 text-center text-white"
+              >
+                <div className="absolute inset-0 bg-black/10 glassEffect z-[-1] rounded-full" />
+                {"\u2190"} {PROJECT_LIST_LABEL}
+              </Link>
+            </div>
             <h2 className="text-3xl xl:text-5xl font-bold mt-24 md:mt-0 text-center break-keep">
               {page ? getProjectTitle(page) : "No Title"}
             </h2>
@@ -279,13 +219,13 @@ export default function ProjectDetail({ pageId }: ProjectDetailProps) {
           </div>
 
           <div className="flex flex-col gap-4 w-full xl:w-[800px] mb-24">
-            {pageError ? (
-              <p className="text-gray-300">{pageError}</p>
+            {error ? (
+              <p className="text-gray-300">{error}</p>
             ) : blocks.length > 0 ? (
-              blocks.map((block) => renderBlock(block, columnListData, columnChildren))
-            ) : (
+              blocks.map((block) => renderBlock(block))
+            ) : isLoading ? (
               <p className="text-gray-300">{PROJECT_LOADING_LABEL}</p>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
