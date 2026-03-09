@@ -15,6 +15,8 @@ import {
   getProjectTitle,
 } from "@/lib/projectNotion";
 
+const scrollDepths = [25, 50, 75, 100];
+
 type ProjectsProps = {
   initialData: ProjectPage[];
   initialError?: string | null;
@@ -25,6 +27,8 @@ export default function Projects({ initialData, initialError = null }: ProjectsP
   const [filter, setFilter] = useState<string | null>(null);
   const [coverLoadFailed, setCoverLoadFailed] = useState<Record<string, boolean>>({});
   const prefetchedProjectIds = useRef(new Set<string>());
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const firedDepths = useRef<Set<number>>(new Set());
   const data = initialData;
   const loadError = initialError;
 
@@ -91,11 +95,37 @@ export default function Projects({ initialData, initialError = null }: ProjectsP
     ? data.filter((item) => getProjectCategories(item).some((tag) => tag.name === filter))
     : data;
 
+  const handleScroll = () => {
+    const container = scrollRef.current;
+    if (!container) {
+      return;
+    }
+
+    const maxScroll = container.scrollHeight - container.clientHeight;
+    if (maxScroll <= 0) {
+      return;
+    }
+
+    const percent = Math.round((container.scrollTop / maxScroll) * 100);
+    scrollDepths.forEach((depth) => {
+      if (percent >= depth && !firedDepths.current.has(depth)) {
+        firedDepths.current.add(depth);
+        trackSiteEvent({
+          clarityEvent: "project:scroll_depth",
+          gaEvent: "project_scroll_depth",
+          payload: { depth },
+        });
+      }
+    });
+  };
+
   return (
     <div className="flex justify-center h-full">
       <div
+        ref={scrollRef}
         className="w-[70vw] h-full flex flex-col items-center overflow-y-auto overscroll-none"
         style={{ WebkitOverflowScrolling: "touch" }}
+        onScroll={handleScroll}
       >
         <div className="w-full">
           <div className="flex flex-col sm:flex-row gap-4 my-10 xl:my-20">

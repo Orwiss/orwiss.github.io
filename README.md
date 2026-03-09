@@ -37,6 +37,7 @@ Custom interaction events are pushed into `dataLayer` with these event names:
 
 - `project_card_click`
 - `project_detail_view`
+- `project_scroll_depth`
 - `cv_click`
 - `outbound_link_click`
 - `about_scroll_depth`
@@ -58,6 +59,7 @@ If you want those custom events to appear in GA4, create a GTM `GA4 Event` tag f
 
 - `project_card_click`
 - `project_detail_view`
+- `project_scroll_depth`
 - `cv_click`
 - `outbound_link_click`
 - `about_scroll_depth`
