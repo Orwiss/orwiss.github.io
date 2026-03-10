@@ -22,6 +22,10 @@ type ProjectDetailProps = {
   pageId: string;
 };
 
+const preventMediaAction = (event: { preventDefault: () => void }) => {
+  event.preventDefault();
+};
+
 function renderRichText(texts?: { plain_text: string }[]) {
   return texts?.map((text, index) => <span key={index}>{text.plain_text}</span>) ?? null;
 }
@@ -35,6 +39,12 @@ function renderVideo(block: ProjectBlock) {
         draggable="false"
         autoPlay
         loop
+        muted
+        playsInline
+        disablePictureInPicture
+        controlsList="nodownload"
+        onContextMenu={preventMediaAction}
+        onDragStart={preventMediaAction}
         className="w-full"
       >
         Your browser does not support the video tag.
@@ -59,7 +69,7 @@ function renderVideo(block: ProjectBlock) {
       <iframe
         key={block.id}
         className="w-full aspect-video"
-        src={`https://www.youtube.com/embed/${videoId}`}
+        src={`https://www.youtube.com/embed/${videoId}?mute=1&rel=0&playsinline=1`}
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
         allowFullScreen
       />
@@ -108,6 +118,8 @@ function renderBlock(block: ProjectBlock) {
           src={block.image?.file?.url || ""}
           alt={block.image?.caption || "Image"}
           draggable="false"
+          onContextMenu={preventMediaAction}
+          onDragStart={preventMediaAction}
           className="w-full"
         />
       );
