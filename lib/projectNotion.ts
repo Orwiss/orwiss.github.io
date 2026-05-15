@@ -1,6 +1,6 @@
 import {
   createNotionClient,
-  getNotionDatabaseId,
+  getNotionDataSourceId,
   proxyNotionJson,
   replacePageCoversWithProxy,
   shouldProxyNotionInDevelopment,
@@ -10,59 +10,78 @@ import {
 export type MultiSelectTag = {
   id: string;
   name: string;
+  color?: string;
 };
 
-export type RichText = {
+export type RichTextAnnotations = {
+  bold?: boolean;
+  italic?: boolean;
+  strikethrough?: boolean;
+  underline?: boolean;
+  code?: boolean;
+  color?: string;
+};
+
+export type RichTextItem = {
+  type?: "text" | "mention" | "equation";
+  text?: { content: string; link?: { url: string } | null };
+  mention?: { type: string; [key: string]: unknown };
+  equation?: { expression: string };
+  annotations?: RichTextAnnotations;
   plain_text: string;
+  href?: string | null;
 };
 
 export type ProjectProperties = Record<
   string,
   {
-    title?: RichText[];
-    date?: { start: string };
+    title?: RichTextItem[];
+    date?: { start: string; end?: string | null };
     multi_select?: MultiSelectTag[];
-    rich_text?: RichText[];
+    rich_text?: RichTextItem[];
+    select?: { id: string; name: string; color?: string };
   }
 >;
+
+export type ProjectCover = {
+  type?: "file" | "external";
+  file?: { url: string };
+  external?: { url: string };
+};
 
 export type ProjectPage = {
   id: string;
   properties: ProjectProperties;
-  cover?: {
-    type?: "file" | "external";
-    file?: { url: string };
-    external?: { url: string };
-  };
+  cover?: ProjectCover;
+  icon?:
+    | { type: "emoji"; emoji: string }
+    | { type: "external"; external: { url: string } }
+    | { type: "file"; file: { url: string } };
 };
 
+// Loose block shape — Notion's block payload differs per type, so we keep
+// fields optional and let the renderer narrow per case. has_children + children
+// are added by our hydration step (see hydrateBlocks).
 export type ProjectBlock = {
   id: string;
   type: string;
-  heading_1?: { rich_text: RichText[] };
-  heading_2?: { rich_text: RichText[] };
-  heading_3?: { rich_text: RichText[] };
-  paragraph?: { rich_text: RichText[] };
-  image?: { file?: { url: string }; caption?: string };
-  video?: { external?: { url: string }; file?: { url: string }; type: string };
-  link_preview?: { url: string };
-  bookmark?: { url: string };
-  numbered_list_item?: { rich_text: RichText[] };
   has_children?: boolean;
   children?: ProjectBlock[];
+  // Per-type payloads — accessed dynamically by the renderer.
+  [key: string]: unknown;
 };
 
-export const PROJECT_TITLE_PROPERTY = "\uC774\uB984";
-export const PROJECT_DATE_PROPERTY = "\uB0A0\uC9DC";
-export const PROJECT_CATEGORY_PROPERTY = "\uCE74\uD14C\uACE0\uB9AC";
-export const PROJECT_TOOLS_PROPERTY = "\uC0AC\uC6A9 \uB3C4\uAD6C";
-export const PROJECT_PARTICIPANTS_PROPERTY = "\uCC38\uC5EC\uC790";
-export const PROJECT_LOADING_LABEL = "\uB85C\uB529 \uC911...";
-export const PROJECT_LIST_LABEL = "\uBAA9\uB85D";
-export const PROJECT_LIST_ERROR_LABEL =
-  "\uD504\uB85C\uC81D\uD2B8 \uBAA9\uB85D\uC744 \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.";
-export const PROJECT_DETAIL_ERROR_LABEL =
-  "\uD504\uB85C\uC81D\uD2B8 \uC0C1\uC138 \uC815\uBCF4\uB97C \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.";
+// Korean DB property names (must match the Notion database exactly).
+export const PROJECT_TITLE_PROPERTY = "이름";
+export const PROJECT_DATE_PROPERTY = "날짜";
+export const PROJECT_CATEGORY_PROPERTY = "카테고리";
+export const PROJECT_TOOLS_PROPERTY = "사용 도구";
+export const PROJECT_PARTICIPANTS_PROPERTY = "참여자";
+
+export const PROJECT_LIST_LABEL = "목록";
+export const PROJECT_LOADING_LABEL = "로딩 중...";
+export const PROJECT_LIST_ERROR_LABEL = "프로젝트 목록을 불러오지 못했습니다.";
+export const PROJECT_DETAIL_ERROR_LABEL = "프로젝트 상세 정보를 불러오지 못했습니다.";
 
 type ProjectPagePayload = {
   results?: ProjectPage[];
@@ -88,7 +107,9 @@ export type ProjectListData = {
 };
 
 export function getProjectTitle(page: ProjectPage) {
-  return page.properties?.[PROJECT_TITLE_PROPERTY]?.title?.[0]?.plain_text ?? "No Name";
+  return (
+    page.properties?.[PROJECT_TITLE_PROPERTY]?.title?.[0]?.plain_text ?? "No Name"
+  );
 }
 
 export function getProjectDateValue(page: ProjectPage) {
@@ -111,6 +132,22 @@ export function getProjectCoverUrl(page: ProjectPage) {
   return page.cover?.file?.url ?? page.cover?.external?.url ?? "";
 }
 
+// Container block types whose children are NOT returned by the initial
+// blocks.children.list call — we must recursively fetch them ourselves.
+// (Notion fetches one level at a time.)
+const CONTAINER_TYPES = new Set([
+  "column_list",
+  "column",
+  "toggle",
+  "callout",
+  "quote",
+  "bulleted_list_item",
+  "numbered_list_item",
+  "to_do",
+  "synced_block",
+  "template",
+]);
+
 async function fetchProjectPagePayload(pageId: string) {
   if (shouldProxyNotionInDevelopment() || shouldUseRemoteNotionFallback()) {
     return proxyNotionJson<ProjectPagePayload>(`/api/notion/page/${pageId}`);
@@ -128,38 +165,6 @@ async function fetchProjectPagePayload(pageId: string) {
   };
 }
 
-export async function getProjectListData(): Promise<ProjectListData> {
-  try {
-    if (shouldProxyNotionInDevelopment() || shouldUseRemoteNotionFallback()) {
-      const payload = await proxyNotionJson<ProjectPagePayload>("/api/notion", {
-        next: { revalidate: 300 },
-      });
-
-      return {
-        results: payload.results ?? [],
-        error: null,
-      };
-    }
-
-    const notion = createNotionClient();
-    const response = await notion.databases.query({
-      database_id: getNotionDatabaseId(),
-    });
-
-    return {
-      results: replacePageCoversWithProxy(response.results as ProjectPage[]),
-      error: null,
-    };
-  } catch (error) {
-    console.error("Error fetching project list:", error);
-
-    return {
-      results: [],
-      error: PROJECT_LIST_ERROR_LABEL,
-    };
-  }
-}
-
 async function fetchProjectBlockPayload(blockId: string) {
   if (shouldProxyNotionInDevelopment() || shouldUseRemoteNotionFallback()) {
     return proxyNotionJson<ProjectBlockPayload>(`/api/notion/block/${blockId}`);
@@ -167,60 +172,75 @@ async function fetchProjectBlockPayload(blockId: string) {
 
   const notion = createNotionClient();
   const response = await notion.blocks.children.list({ block_id: blockId });
-
-  return {
-    blocks: response.results as ProjectBlock[],
-  };
+  return { blocks: response.results as ProjectBlock[] };
 }
 
-async function hydrateProjectBlocks(blocks: ProjectBlock[]) {
+// Walk the block tree and fetch children for any block whose type is known
+// to be a container and that reports has_children. Bounded by depth to avoid
+// pathological recursion. Failures on individual child fetches are swallowed
+// so one bad block cannot break the entire page render — the offending block
+// just appears with no children.
+async function hydrateBlocks(
+  blocks: ProjectBlock[],
+  depth = 0,
+): Promise<ProjectBlock[]> {
+  const MAX_DEPTH = 6;
+  if (depth >= MAX_DEPTH) return blocks;
+
   return Promise.all(
     blocks.map(async (block) => {
-      if (block.type !== "column_list") {
+      if (!block.has_children || !CONTAINER_TYPES.has(block.type)) {
         return block;
       }
-
-      const columnListPayload = await fetchProjectBlockPayload(block.id);
-      const columns = columnListPayload.blocks || [];
-
-      const hydratedColumns = await Promise.all(
-        columns.map(async (column) => {
-          if (!column.has_children) {
-            return column;
-          }
-
-          const childPayload = await fetchProjectBlockPayload(column.id);
-          return {
-            ...column,
-            children: childPayload.blocks || [],
-          };
-        })
-      );
-
-      return {
-        ...block,
-        children: hydratedColumns,
-      };
-    })
+      try {
+        const childPayload = await fetchProjectBlockPayload(block.id);
+        const hydrated = await hydrateBlocks(childPayload.blocks ?? [], depth + 1);
+        return { ...block, children: hydrated };
+      } catch (error) {
+        console.warn(
+          `[notion] failed to hydrate children of ${block.type} ${block.id}:`,
+          error instanceof Error ? error.message : error,
+        );
+        return block;
+      }
+    }),
   );
+}
+
+export async function getProjectListData(): Promise<ProjectListData> {
+  try {
+    if (shouldProxyNotionInDevelopment() || shouldUseRemoteNotionFallback()) {
+      // no-store on purpose: in dev we want fresh data; with Next's data
+      // cache + revalidate, an early empty response would stick for the
+      // revalidation window and the mind map would render hub-only.
+      const payload = await proxyNotionJson<ProjectPagePayload>("/api/notion", {
+        cache: "no-store",
+      });
+      return { results: payload.results ?? [], error: null };
+    }
+
+    const notion = createNotionClient();
+    const dataSourceId = await getNotionDataSourceId();
+    const response = await notion.dataSources.query({
+      data_source_id: dataSourceId,
+    });
+    return {
+      results: replacePageCoversWithProxy(response.results as unknown as ProjectPage[]),
+      error: null,
+    };
+  } catch (error) {
+    console.error("Error fetching project list:", error);
+    return { results: [], error: PROJECT_LIST_ERROR_LABEL };
+  }
 }
 
 export async function getProjectDetailData(pageId: string): Promise<ProjectDetailData> {
   try {
     const payload = await fetchProjectPagePayload(pageId);
-    const blocks = await hydrateProjectBlocks(payload.blocks || []);
-
-    return {
-      page: payload.page || null,
-      blocks,
-      error: null,
-    };
+    const blocks = await hydrateBlocks(payload.blocks ?? []);
+    return { page: payload.page ?? null, blocks, error: null };
   } catch (error) {
     console.error("Error fetching project detail:", error);
-    return {
-      page: null,
-      blocks: [],
-      error: PROJECT_DETAIL_ERROR_LABEL,
-    };
+    return { page: null, blocks: [], error: PROJECT_DETAIL_ERROR_LABEL };
   }
 }

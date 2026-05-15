@@ -10,42 +10,31 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 type RouteContext = {
-  params: {
-    blockId: string;
-  };
+  params: Promise<{ blockId: string }>;
 };
 
 export async function GET(_request: Request, { params }: RouteContext) {
+  const { blockId } = await params;
   try {
     if (shouldProxyNotionInDevelopment()) {
-      const proxied = await proxyNotionRequest(`/api/notion/block/${params.blockId}`);
+      const proxied = await proxyNotionRequest(`/api/notion/block/${blockId}`);
       return new NextResponse(proxied.body, {
         status: proxied.status,
-        headers: {
-          ...noStoreHeaders,
-          "Content-Type": proxied.contentType,
-        },
+        headers: { ...noStoreHeaders, "Content-Type": proxied.contentType },
       });
     }
 
     const notion = createNotionClient();
-    const blocksResponse = await notion.blocks.children.list({
-      block_id: params.blockId,
-    });
-
+    const blocksResponse = await notion.blocks.children.list({ block_id: blockId });
     return NextResponse.json(
-      {
-        blocks: blocksResponse.results,
-      },
-      {
-        headers: noStoreHeaders,
-      }
+      { blocks: blocksResponse.results },
+      { headers: noStoreHeaders },
     );
   } catch (error) {
     console.error(error);
     return NextResponse.json(
-      { error: "Failed to fetch page details" },
-      { status: 500, headers: noStoreHeaders }
+      { error: "Failed to fetch block children" },
+      { status: 500, headers: noStoreHeaders },
     );
   }
 }

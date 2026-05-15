@@ -14,9 +14,7 @@ export const revalidate = 0;
 const coverCacheHeaders = createCacheHeaders(3600, 86400, 604800);
 
 type RouteContext = {
-  params: {
-    pageId: string;
-  };
+  params: Promise<{ pageId: string }>;
 };
 
 type ProxiedPagePayload = {
@@ -30,39 +28,36 @@ type ProxiedPagePayload = {
 };
 
 export async function GET(_request: Request, { params }: RouteContext) {
+  const { pageId } = await params;
   try {
     let coverUrl: string | null = null;
 
     if (shouldProxyNotionInDevelopment()) {
+      // First try the prod cover proxy directly — it already streams the image
+      // and we want to reuse the upstream-cached signed URL when possible.
       const liveCoverUrl = new URL(
-        `/api/notion/cover/${params.pageId}`,
-        getNotionProxyOrigin()
+        `/api/notion/cover/${pageId}`,
+        getNotionProxyOrigin(),
       );
-      const liveCoverResponse = await fetch(liveCoverUrl, {
-        cache: "no-store",
-      }).catch(() => null);
+      const liveResponse = await fetch(liveCoverUrl, { cache: "no-store" }).catch(
+        () => null,
+      );
 
-      if (liveCoverResponse?.ok && liveCoverResponse.body) {
+      if (liveResponse?.ok && liveResponse.body) {
         const headers = new Headers(coverCacheHeaders);
-        const contentType = liveCoverResponse.headers.get("content-type");
-
-        if (contentType) {
-          headers.set("Content-Type", contentType);
-        }
-
-        return new NextResponse(liveCoverResponse.body, {
-          status: 200,
-          headers,
-        });
+        const contentType = liveResponse.headers.get("content-type");
+        if (contentType) headers.set("Content-Type", contentType);
+        return new NextResponse(liveResponse.body, { status: 200, headers });
       }
 
+      // Fallback: pull page metadata, extract the cover URL, fetch ourselves.
       const proxied = await proxyNotionJson<ProxiedPagePayload>(
-        `/api/notion/page/${params.pageId}`
+        `/api/notion/page/${pageId}`,
       );
       coverUrl = getCoverUrlFromPage(proxied.page ?? {});
     } else {
       const notion = createNotionClient();
-      const page = await notion.pages.retrieve({ page_id: params.pageId });
+      const page = await notion.pages.retrieve({ page_id: pageId });
       coverUrl = getCoverUrlFromPage(
         page as {
           cover?: {
@@ -70,44 +65,34 @@ export async function GET(_request: Request, { params }: RouteContext) {
             file?: { url?: string };
             external?: { url?: string };
           };
-        }
+        },
       );
     }
 
     if (!coverUrl) {
       return NextResponse.json(
         { error: "Cover image was not found." },
-        { status: 404, headers: noStoreHeaders }
+        { status: 404, headers: noStoreHeaders },
       );
     }
 
-    const coverResponse = await fetch(coverUrl, {
-      cache: "no-store",
-    });
-
+    const coverResponse = await fetch(coverUrl, { cache: "no-store" });
     if (!coverResponse.ok || !coverResponse.body) {
       return NextResponse.json(
         { error: "Failed to fetch cover image." },
-        { status: coverResponse.status || 502, headers: noStoreHeaders }
+        { status: coverResponse.status || 502, headers: noStoreHeaders },
       );
     }
 
     const headers = new Headers(coverCacheHeaders);
     const contentType = coverResponse.headers.get("content-type");
-
-    if (contentType) {
-      headers.set("Content-Type", contentType);
-    }
-
-    return new NextResponse(coverResponse.body, {
-      status: 200,
-      headers,
-    });
+    if (contentType) headers.set("Content-Type", contentType);
+    return new NextResponse(coverResponse.body, { status: 200, headers });
   } catch (error) {
     console.error(error);
     return NextResponse.json(
       { error: "Failed to fetch cover image." },
-      { status: 500, headers: noStoreHeaders }
+      { status: 500, headers: noStoreHeaders },
     );
   }
 }

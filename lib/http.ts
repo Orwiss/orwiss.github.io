@@ -8,8 +8,8 @@ export const noStoreHeaders = {
 
 export function createCacheHeaders(
   browserMaxAge: number,
-  edgeMaxAge = browserMaxAge,
-  staleWhileRevalidate = edgeMaxAge * 2
+  edgeMaxAge: number = browserMaxAge,
+  staleWhileRevalidate: number = edgeMaxAge * 2,
 ) {
   return {
     "Cache-Control": `public, max-age=${browserMaxAge}, stale-while-revalidate=${staleWhileRevalidate}`,
