@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
@@ -42,17 +50,31 @@ const CATEGORY_WEIGHT_PAD = 3;
 // === Custom node components ===
 
 function HubNode({ data }: NodeProps) {
+  // Hub is the default-state halo anchor. Hovering it is semantically the
+  // same as the empty/default state, so we explicitly assert HUB_ID on
+  // enter (covers the case where the cursor enters hub from a category /
+  // project hover without crossing dead space first).
+  const { setHovered } = useContext(HoverContext);
   return (
-    <div className="bg-black text-white px-9 py-4 text-4xl whitespace-nowrap tracking-tight">
+    <div
+      onMouseEnter={() => setHovered(HUB_ID)}
+      onMouseLeave={() => setHovered(null)}
+      className="bg-black text-white px-9 py-4 text-4xl whitespace-nowrap tracking-tight"
+    >
       {String(data.label)}
       <HiddenHandles />
     </div>
   );
 }
 
-function CategoryNode({ data }: NodeProps) {
+function CategoryNode({ id, data }: NodeProps) {
+  const { setHovered } = useContext(HoverContext);
   return (
-    <div className="bg-[#DDD] border rounded-full border-black px-7 py-3 text-2xl whitespace-nowrap">
+    <div
+      onMouseEnter={() => setHovered(id)}
+      onMouseLeave={() => setHovered(null)}
+      className="bg-[#DDD] border rounded-full border-black px-7 py-3 text-2xl whitespace-nowrap"
+    >
       {String(data.label)}
       <HiddenHandles />
     </div>
@@ -74,6 +96,10 @@ const VIEWPORT_MARGIN = 12;
 // toward zero at the halo's outer reach. Dots are full circles — never
 // clipped — which is the defining property a CSS mask can't give us.
 const HALO_NEON_COLOR = "#39ff14";
+// Per-node base reach in SCREEN px. Hub gets a much larger field since it
+// is the default "attractor" halo shown when nothing else is hovered;
+// categories + projects share the normal reach.
+const HUB_HALO_PAD = 520;      // SCREEN-px reach for the hub's default halo
 const HALO_PAD = 220;          // SCREEN-px BASE reach (range over which dot radius decays to zero)
                                // — modulated per node by HALO_AMP, see geometry below.
                                // Kept in screen px so the visible halo area stays
@@ -99,8 +125,8 @@ const HALO_NOISE_THRESHOLD = 0.55; // t value above which the core stays perfect
 const HALO_AMP = 0.32;             // ±32% modulation of HALO_PAD per node
 const HALO_MAX_MUL = 1 + HALO_AMP; // used for sizing the SVG viewBox so the
                                    // outermost breathing frame never clips
-const HALO_FREQ_MIN = 0.18;        // Hz — slowest breathing cycle (~5.5s)
-const HALO_FREQ_MAX = 0.42;        // Hz — fastest breathing cycle (~2.4s)
+const HALO_FREQ_MIN = 0.07;        // Hz — slowest breathing cycle (~14s)
+const HALO_FREQ_MAX = 0.16;        // Hz — fastest breathing cycle (~6.3s)
 // Render cap. Frame budget for the per-tick path build below — we still
 // regenerate the field every frame, but skip frames if we're consistently
 // running over budget (set via PROFILE_HALO=true to log).
@@ -127,19 +153,49 @@ function hashString(str: string): number {
 // (per-node NeonHalftoneHalo removed — HaloLayer now renders the full halo
 // field globally; see further down.)
 
-function ProjectNode({ data }: NodeProps) {
+// === Hover state plumbing ===============================================
+// Nodes report mouse enter/leave through this context; HaloLayer reads
+// the current hovered id (+ derived target set) to drive its per-node
+// reach interpolation. Keeping it in context means nodes don't have to
+// know about HaloLayer's internals, and HaloLayer doesn't have to drill
+// hover handlers through React Flow's nodeTypes plumbing.
+type HoverCtx = {
+  hoveredId: string | null;
+  setHovered: (id: string | null) => void;
+};
+const HoverContext = createContext<HoverCtx>({
+  hoveredId: null,
+  setHovered: () => {},
+});
+
+// Static lookups derived from the Notion-fed projects list. categoryProjects
+// maps "cat:<id>" → array of "proj:<id>" so HaloLayer can light up an entire
+// category's children on category hover. projectCategory is the inverse for
+// project-hover (where we light up just the project's parent category).
+type ProjectMapsCtx = {
+  projectCategory: Map<string, string>;
+  categoryProjects: Map<string, string[]>;
+};
+const ProjectMapsContext = createContext<ProjectMapsCtx>({
+  projectCategory: new Map(),
+  categoryProjects: new Map(),
+});
+
+function ProjectNode({ id, data }: NodeProps) {
   const [hovered, setHovered] = useState(false);
   const [coverFailed, setCoverFailed] = useState(false);
   const [popupPos, setPopupPos] = useState<{ top: number; left: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const notionId = (data.notionId as string | undefined) ?? "";
   const label = String(data.label);
+  const { setHovered: setHoveredCtx } = useContext(HoverContext);
 
   // Compute popup placement at hover time. We render via a portal to
   // document.body (see below) so the popup escapes React Flow's transform tree
   // — its size stays constant regardless of canvas zoom, and z-index works
   // without lifting wrapper stacking contexts.
   const handleEnter = () => {
+    setHoveredCtx(id);
     const el = ref.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
@@ -168,6 +224,7 @@ function ProjectNode({ data }: NodeProps) {
   };
 
   const handleLeave = () => {
+    setHoveredCtx(null);
     setHovered(false);
     setCoverFailed(false);
     setPopupPos(null);
@@ -343,16 +400,80 @@ const edgeTypes = {
 // because the grid is locked to world space, dragging a node "uncovers"
 // dots at fixed world positions instead of carrying its own pattern around.
 
+// Per-node bloom traversal time (seconds). Linear interpolation between
+// 0 ↔ fullReach so bloom-in and bloom-out have IDENTICAL perceived speed
+// (exponential approach makes the first frames much faster than the
+// later ones, which read as asymmetric especially for bloom-in where
+// the dots are invisible at sub-pixel sizes during the fast early phase).
+// Per-node step = fullReach / DURATION so hub (520 px) and others
+// (220 px) finish at the same wall-clock time even though they cover
+// different absolute ranges.
+const HALO_BLOOM_DURATION = 0.8;
+// Below this screen-px residual reach we treat a fading-out node as
+// fully gone and drop it from the active set. The animation pass
+// already suppresses dots whose radius is < 0.35px, so ≤0.5px residual
+// reach produces no visible dots — pruning here is invisible.
+const HALO_PRUNE_REACH = 0.5;
+
+function fullReachForId(id: string): number {
+  return id === HUB_ID ? HUB_HALO_PAD : HALO_PAD;
+}
+
+// Hub's halo uses a fundamentally DIFFERENT noise mechanism from
+// category/project halos. Project/category halos use per-cell random
+// dropout + position jitter + size jitter (controlled, edge-only —
+// they read as a clean halftone with a slightly speckled rim). Hub
+// instead keeps a perfectly regular halftone grid AND clean per-dot
+// sizes, but the ISO-CONTOUR itself wobbles wave-like via spatial
+// coherent noise — exactly the look in image 2 of the user's feedback
+// (TRIP halftone): regular dots, irregular boundary.
+const HUB_BOUNDARY_NOISE_AMP = 0.42;      // t shift amplitude (±) at the iso-contour
+const HUB_NOISE_WAVELENGTH = 70;          // SCREEN-px between noise peaks
+const HUB_NOISE_DRIFT = 0.04;             // slow time-domain drift so the wave slowly morphs
+// Gate the boundary noise to cells near the iso-contour. Cells deeper
+// inside (t > this threshold) get the FULL clean halftone falloff so
+// internal dot sizes never wobble; only cells in the outer rim get the
+// wave-shifted t. Without this gate the screenshot the user pushed
+// back on showed bright "blotches" inside the halo — that was noise
+// adding to t=0.7 cells, doubling their effective intensity locally.
+const HUB_NOISE_EDGE_THRESHOLD = 0.45;
+
+function boundaryNoiseAmpForId(id: string): number {
+  return id === HUB_ID ? HUB_BOUNDARY_NOISE_AMP : 0;
+}
+function usesBoundaryNoise(id: string): boolean {
+  return id === HUB_ID;
+}
+
+// Smooth 2D value noise: bilinearly interpolated hash2d corners with a
+// smoothstep weight. Returns [0, 1]. Cheap (8 floats + 5 mixes) and
+// good enough for organic-looking iso-contour wobble.
+function smoothNoise2d(x: number, y: number): number {
+  const ix = Math.floor(x);
+  const iy = Math.floor(y);
+  const fx = x - ix;
+  const fy = y - iy;
+  const v00 = hash2d(ix, iy);
+  const v10 = hash2d(ix + 1, iy);
+  const v01 = hash2d(ix, iy + 1);
+  const v11 = hash2d(ix + 1, iy + 1);
+  const u = fx * fx * (3 - 2 * fx);
+  const v = fy * fy * (3 - 2 * fy);
+  const a = v00 + (v10 - v00) * u;
+  const b = v01 + (v11 - v01) * u;
+  return a + (b - a) * v;
+}
+
 function HaloLayer() {
   const domNode = useStore((s) => s.domNode);
 
   // Position fingerprint — see comment above. React Flow mutates the
   // nodeLookup Map in place, so we must derive a string that changes
-  // when geometry changes (and only then).
+  // when geometry changes (and only then). Includes hub + categories +
+  // projects since all node kinds are now halo-eligible.
   const positionsKey = useStore((s) => {
     const parts: string[] = [];
     s.nodeLookup.forEach((node, id) => {
-      if (!id.startsWith(PROJ_PREFIX)) return;
       const w = node.measured?.width;
       const h = node.measured?.height;
       if (!w || !h) return;
@@ -364,43 +485,128 @@ function HaloLayer() {
   });
 
   const nodeLookup = useStore((s) => s.nodeLookup);
-  // Subscribe to a bucketed zoom (0.2 steps) instead of the raw zoom value.
-  // Smooth zoom tweens (+/- buttons, wheel) fire many small zoom deltas; if
-  // we subscribed to raw zoom every one of them re-rendered HaloLayer, which
-  // tore through a fresh path-string + DOM diff each step. Bucketing means
-  // React only re-renders on bucket boundary crossings (~3 per zoom gesture)
-  // while the per-frame RAF tick keeps the dot sizes/positions current via
-  // the live zoom read inside `pathD` below.
   const zoomBucket = useStore((s) =>
     Math.max(0.001, Math.round(s.transform[2] * 5) / 5),
   );
-  // Store handle for the cull pass + live zoom read below — we read transform
-  // + zoom + container dimensions inside the per-frame animation pass
-  // without subscribing, so pan and fractional zoom events don't trigger
-  // extra re-renders. The RAF tick already drives recomputation; these
-  // reads just pull the latest values when it runs.
   const storeApi = useStoreApi();
 
-  // RAF tick — drives the per-node area-glow oscillation. We tick a
-  // monotonically-increasing seconds value, throttled to ~HALO_TARGET_FPS
-  // so the per-frame field rebuild stays bounded. Pause when the tab is
-  // hidden (no point animating into a black screen).
+  const { hoveredId } = useContext(HoverContext);
+  const { projectCategory, categoryProjects } = useContext(ProjectMapsContext);
+
+  // === Reach state ======================================================
+  // targetReach: SCREEN-px max reach per node id derived from the current
+  // hover. Default state = hub at HUB_HALO_PAD. Category hover lights up
+  // the category + its children at HALO_PAD. Project hover lights up its
+  // parent category + itself at HALO_PAD.
+  const targetReach = useMemo(() => {
+    const m = new Map<string, number>();
+    if (hoveredId === null || hoveredId === HUB_ID) {
+      m.set(HUB_ID, HUB_HALO_PAD);
+    } else if (hoveredId.startsWith(CAT_PREFIX)) {
+      m.set(hoveredId, HALO_PAD);
+      categoryProjects.get(hoveredId)?.forEach((pid) => m.set(pid, HALO_PAD));
+    } else if (hoveredId.startsWith(PROJ_PREFIX)) {
+      const catId = projectCategory.get(hoveredId);
+      if (catId) m.set(catId, HALO_PAD);
+      m.set(hoveredId, HALO_PAD);
+    }
+    return m;
+  }, [hoveredId, projectCategory, categoryProjects]);
+
+  // currentReach mutated in-place every RAF tick by the interpolation
+  // loop. Seeded with hub at full so the very first paint is the default
+  // state, not an unbloomed flash.
+  const currentReachRef = useRef<Map<string, number>>(
+    new Map([[HUB_ID, HUB_HALO_PAD]]),
+  );
+  const targetReachRef = useRef(targetReach);
+  useEffect(() => {
+    targetReachRef.current = targetReach;
+  }, [targetReach]);
+
+  // activeSetSig is a sorted "|"-joined list of node ids currently in the
+  // active set (target OR still-fading-out). Changes drive geometry
+  // rebuilds — when the membership shifts, we need to re-enumerate cells
+  // around the new union of node rects. The RAF loop below assigns to it
+  // only when the actual membership string differs, so steady-state ticks
+  // do not re-render the geometry useMemo.
+  const [activeSetSig, setActiveSetSig] = useState<string>(HUB_ID);
+
+  // RAF tick — drives both (a) the per-node reach interpolation toward
+  // its current target AND (b) the per-frame breathing oscillation. We
+  // throttle the React re-render side via `tickSec` but always step the
+  // ref-based interpolation so its temporal resolution is the browser's
+  // refresh rate, not the tick rate. Pause when the tab is hidden.
   const [tickSec, setTickSec] = useState(0);
   useEffect(() => {
     let raf = 0;
     let lastEmit = -Infinity;
+    let lastTime = performance.now();
     const minDelta = 1000 / HALO_TARGET_FPS;
+
     const loop = (now: number) => {
+      // Clamp dt so a tab-resume or long pause doesn't snap reach
+      // instantly past the smooth bloom.
+      const dt = Math.min(0.1, Math.max(0, (now - lastTime) / 1000));
+      lastTime = now;
+
+      // Interpolate reach for every id appearing in either current or
+      // target. Track which ids stay above the prune threshold; that
+      // becomes the active set.
+      const current = currentReachRef.current;
+      const target = targetReachRef.current;
+      const seen = new Set<string>();
+      current.forEach((_, id) => seen.add(id));
+      target.forEach((_, id) => seen.add(id));
+
+      const activeIds: string[] = [];
+      seen.forEach((id) => {
+        const cur = current.get(id) ?? 0;
+        const tgt = target.get(id) ?? 0;
+        let next: number;
+        if (cur === tgt) {
+          next = cur;
+        } else {
+          // Linear step. maxDelta is scaled by THIS node's fullReach so
+          // hub (520px) and others (220px) finish their 0↔fullReach
+          // traversal in the same wall-clock HALO_BLOOM_DURATION — the
+          // ratio currentReach/fullReach (used as the bloom factor in
+          // pathD) advances at the same rate for every node.
+          const maxDelta = (fullReachForId(id) / HALO_BLOOM_DURATION) * dt;
+          const diff = tgt - cur;
+          const absDiff = diff < 0 ? -diff : diff;
+          const stepMag = absDiff < maxDelta ? absDiff : maxDelta;
+          next = diff > 0 ? cur + stepMag : cur - stepMag;
+        }
+        if (next <= HALO_PRUNE_REACH && tgt === 0) {
+          current.delete(id);
+        } else {
+          current.set(id, next);
+          activeIds.push(id);
+        }
+      });
+
+      // Emit tick state on the throttled cadence so the per-frame path
+      // build (pathD useMemo) only runs HALO_TARGET_FPS times per sec.
       if (now - lastEmit >= minDelta) {
         lastEmit = now;
         setTickSec(now / 1000);
       }
+
+      // Membership change → re-render so geometry useMemo can rebuild.
+      activeIds.sort();
+      const sig = activeIds.join("|");
+      setActiveSetSig((prev) => (prev === sig ? prev : sig));
+
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     const onVisible = () => {
       if (document.hidden) cancelAnimationFrame(raf);
-      else raf = requestAnimationFrame(loop);
+      else {
+        lastTime = performance.now();
+        raf = requestAnimationFrame(loop);
+      }
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
@@ -410,115 +616,148 @@ function HaloLayer() {
   }, []);
 
   // === Geometry pass (cached) ===========================================
-  // For each cell that any node's MAX-reach halo could possibly touch,
-  // record per-node distance. Recomputed only when node positions change
-  // or we cross a zoom bucket. Per-tick animation work below reuses this
-  // distance table.
+  // For each cell that any ACTIVE node's MAX-reach halo could touch,
+  // record per-node distance. Each rect carries its own fullReach
+  // (HUB_HALO_PAD for the hub, HALO_PAD for categories/projects) so the
+  // cell enumeration stays tight around small nodes and only blows up
+  // around the hub when it's actually part of the active set.
+  // Recomputed when:
+  //   - node positions change (positionsKey)
+  //   - we cross a zoom bucket boundary (zoomBucket)
+  //   - the active-set membership changes (activeSetSig)
   const geometry = useMemo(() => {
+    if (!activeSetSig) return null;
+    const ids = activeSetSig.split("|");
     type Rect = {
       id: string;
       cx: number;
       cy: number;
       halfW: number;
       halfH: number;
-      freq: number; // rad/s
-      phase: number; // rad
+      fullReachScreen: number; // SCREEN-px design max reach for this node
+      maxReachCanvas: number;  // canvas-px enumeration radius incl. boundary-noise outward extension
+      hasBoundaryNoise: boolean;
+      freq: number;            // rad/s
+      phase: number;           // rad
     };
     const rects: Rect[] = [];
-    nodeLookup.forEach((node, id) => {
-      if (!id.startsWith(PROJ_PREFIX)) return;
+    for (const id of ids) {
+      const node = nodeLookup.get(id);
+      if (!node) continue;
       const w = node.measured?.width;
       const h = node.measured?.height;
-      if (!w || !h) return;
+      if (!w || !h) continue;
       const h01 = hashString(id);
       const freqHz = HALO_FREQ_MIN + h01 * (HALO_FREQ_MAX - HALO_FREQ_MIN);
+      const fullReachScreen = id === HUB_ID ? HUB_HALO_PAD : HALO_PAD;
+      // For nodes using spatial boundary noise (hub), extend enumeration
+      // outward by the boundary noise amplitude so cells whose t was
+      // originally just below zero (d > nominal reach) can still get a
+      // positive noise-shifted t and be rendered. Without the
+      // extension the wave can never bulge outward, only carve inward.
+      const boundaryAmp = boundaryNoiseAmpForId(id);
+      const maxReachCanvas =
+        (fullReachScreen / zoomBucket) * HALO_MAX_MUL * (1 + boundaryAmp);
       rects.push({
         id,
         cx: node.position.x + w / 2,
         cy: node.position.y + h / 2,
         halfW: w / 2,
         halfH: h / 2,
+        fullReachScreen,
+        maxReachCanvas,
+        hasBoundaryNoise: usesBoundaryNoise(id),
         freq: 2 * Math.PI * freqHz,
         phase: h01 * 2 * Math.PI,
       });
-    });
+    }
     if (rects.length === 0) return null;
 
     const gridCanvas = HALO_GRID / zoomBucket;
-    const padCanvas = HALO_PAD / zoomBucket;
-    const maxReach = padCanvas * HALO_MAX_MUL;
 
     // Cell record: position in canvas px + flat per-rect distance list.
-    // Using parallel arrays (rectIdx, dist) keeps the per-tick loop
-    // tight and GC-quiet.
     type Cell = {
       gx: number;
       gy: number;
       rectIdx: Uint16Array;
       dist: Float32Array;
     };
-    const tmpIdx: number[] = [];
-    const tmpDist: number[] = [];
-    const cells: Cell[] = [];
+    const cellMap = new Map<string, { gx: number; gy: number; rectIdx: number[]; dist: number[] }>();
 
     let worldMinX = Infinity;
     let worldMinY = Infinity;
     let worldMaxX = -Infinity;
     let worldMaxY = -Infinity;
-    for (const r of rects) {
-      worldMinX = Math.min(worldMinX, r.cx - r.halfW - maxReach);
-      worldMinY = Math.min(worldMinY, r.cy - r.halfH - maxReach);
-      worldMaxX = Math.max(worldMaxX, r.cx + r.halfW + maxReach);
-      worldMaxY = Math.max(worldMaxY, r.cy + r.halfH + maxReach);
-    }
 
-    const cgxMin = Math.floor(worldMinX / gridCanvas);
-    const cgxMax = Math.ceil(worldMaxX / gridCanvas);
-    const cgyMin = Math.floor(worldMinY / gridCanvas);
-    const cgyMax = Math.ceil(worldMaxY / gridCanvas);
+    // Per-rect cell enumeration. Iterating the bounding box for each
+    // rect (rather than a single union box for all rects) keeps the
+    // total cell count proportional to active-halo area instead of
+    // bounding-box-of-all-halos area — a big saving when nodes are far
+    // apart (e.g. hub center + a single distant project on hover).
+    for (let i = 0; i < rects.length; i += 1) {
+      const r = rects[i];
+      const reach = r.maxReachCanvas;
+      const minX = r.cx - r.halfW - reach;
+      const minY = r.cy - r.halfH - reach;
+      const maxX = r.cx + r.halfW + reach;
+      const maxY = r.cy + r.halfH + reach;
+      if (minX < worldMinX) worldMinX = minX;
+      if (minY < worldMinY) worldMinY = minY;
+      if (maxX > worldMaxX) worldMaxX = maxX;
+      if (maxY > worldMaxY) worldMaxY = maxY;
 
-    for (let cgy = cgyMin; cgy < cgyMax; cgy += 1) {
-      const gy = (cgy + 0.5) * gridCanvas;
-      for (let cgx = cgxMin; cgx < cgxMax; cgx += 1) {
-        const gx = (cgx + 0.5) * gridCanvas;
-        tmpIdx.length = 0;
-        tmpDist.length = 0;
-        for (let i = 0; i < rects.length; i += 1) {
-          const r = rects[i];
+      const cgxStart = Math.floor(minX / gridCanvas);
+      const cgxEnd = Math.ceil(maxX / gridCanvas);
+      const cgyStart = Math.floor(minY / gridCanvas);
+      const cgyEnd = Math.ceil(maxY / gridCanvas);
+
+      for (let cgy = cgyStart; cgy < cgyEnd; cgy += 1) {
+        const gy = (cgy + 0.5) * gridCanvas;
+        for (let cgx = cgxStart; cgx < cgxEnd; cgx += 1) {
+          const gx = (cgx + 0.5) * gridCanvas;
           const dx = Math.abs(gx - r.cx) - r.halfW;
           const dy = Math.abs(gy - r.cy) - r.halfH;
           const ox = dx > 0 ? dx : 0;
           const oy = dy > 0 ? dy : 0;
           const d = Math.sqrt(ox * ox + oy * oy);
-          if (d > maxReach) continue;
-          tmpIdx.push(i);
-          tmpDist.push(d);
+          if (d > reach) continue;
+          const key = `${cgx},${cgy}`;
+          let cell = cellMap.get(key);
+          if (!cell) {
+            cell = { gx, gy, rectIdx: [], dist: [] };
+            cellMap.set(key, cell);
+          }
+          cell.rectIdx.push(i);
+          cell.dist.push(d);
         }
-        if (tmpIdx.length === 0) continue;
-        cells.push({
-          gx,
-          gy,
-          rectIdx: Uint16Array.from(tmpIdx),
-          dist: Float32Array.from(tmpDist),
-        });
       }
     }
+
+    const cells: Cell[] = [];
+    cellMap.forEach((c) => {
+      cells.push({
+        gx: c.gx,
+        gy: c.gy,
+        rectIdx: Uint16Array.from(c.rectIdx),
+        dist: Float32Array.from(c.dist),
+      });
+    });
 
     const svgX = Math.floor(worldMinX / gridCanvas) * gridCanvas;
     const svgY = Math.floor(worldMinY / gridCanvas) * gridCanvas;
     const svgW = Math.ceil((worldMaxX - svgX) / gridCanvas) * gridCanvas;
     const svgH = Math.ceil((worldMaxY - svgY) / gridCanvas) * gridCanvas;
 
-    return { rects, cells, svgX, svgY, svgW, svgH, gridCanvas, padCanvas };
+    return { rects, cells, svgX, svgY, svgW, svgH, gridCanvas };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [positionsKey, zoomBucket]);
+  }, [positionsKey, zoomBucket, activeSetSig]);
 
   // === Animation pass (per RAF tick) =====================================
   // Cheap: walk cached cells, compute per-cell t from currently-modulated
   // per-node reach, apply halftone rules, emit one <path d=...>.
   const pathD = useMemo(() => {
     if (!geometry) return "";
-    const { rects, cells, svgX, svgY, padCanvas } = geometry;
+    const { rects, cells, svgX, svgY } = geometry;
 
     // Read live transform + viewport size once for the whole pass. We
     // don't SUBSCRIBE to transform — the RAF tick already drives this
@@ -540,14 +779,33 @@ function HaloLayer() {
     const viewMinY = -ty / safeZoom - cullMarginCanvas;
     const viewMaxY = (vpH - ty) / safeZoom + cullMarginCanvas;
 
-    // Per-node reach for THIS tick, in canvas px. padCanvas already
-    // incorporates the zoom bucket (HALO_PAD screen-px / zoomBucket),
-    // so visible halo radius stays roughly constant across zoom while
-    // cell-count per node stays bounded.
+    // Per-node reach AND bloom factor for THIS tick.
+    //   reach[i]  : canvas-px iso-contour radius — drives WHICH cells
+    //               are inside the halo at all (max-blend below).
+    //   bloom[i]  : 0..1 bloom progress = currentBase / fullReach. At
+    //               bloom-in start this is near 0, so even cells with
+    //               t≈1 from the iso formula get scaled to sub-pixel
+    //               dots → effectively invisible. As bloom proceeds the
+    //               iso-contour expands AND every dot grows from tiny
+    //               → full-size, which is what reads as "emerging from
+    //               the node center" instead of "a full-size patch
+    //               appearing instantly".
+    //   Steady state: bloom = 1 so this is a no-op overlay on the
+    //   breathing modulation we already had.
+    const currentReach = currentReachRef.current;
     const reach = new Float32Array(rects.length);
+    const bloom = new Float32Array(rects.length);
     for (let i = 0; i < rects.length; i += 1) {
       const r = rects[i];
-      reach[i] = padCanvas * (1 + HALO_AMP * Math.sin(tickSec * r.freq + r.phase));
+      const baseScreen = currentReach.get(r.id) ?? 0;
+      if (baseScreen <= 0) {
+        reach[i] = 0;
+        bloom[i] = 0;
+        continue;
+      }
+      bloom[i] = baseScreen >= r.fullReachScreen ? 1 : baseScreen / r.fullReachScreen;
+      const baseCanvas = baseScreen / safeZoom;
+      reach[i] = baseCanvas * (1 + HALO_AMP * Math.sin(tickSec * r.freq + r.phase));
     }
 
     const segments: string[] = [];
@@ -556,21 +814,63 @@ function HaloLayer() {
       if (cell.gx < viewMinX || cell.gx > viewMaxX) continue;
       if (cell.gy < viewMinY || cell.gy > viewMaxY) continue;
       // Max-blend t across contributing nodes using time-varying reach.
+      // Each contribution carries its node's bloom factor (0..1) so
+      // cells belonging to a fading-in/out node get smaller t → dots
+      // grow into / shrink out of existence instead of popping in at
+      // full size. We also remember whether the winning rect uses the
+      // spatial boundary-noise pipeline (hub) or the per-cell edge
+      // dropout pipeline (category / project).
       let t = 0;
+      let winnerUsesBoundaryNoise = false;
       for (let k = 0; k < cell.rectIdx.length; k += 1) {
         const idx = cell.rectIdx[k];
         const reachI = reach[idx];
         if (reachI <= 0) continue;
         const d = cell.dist[k];
         if (d >= reachI) continue;
-        const ti = 1 - d / reachI;
-        if (ti > t) t = ti;
+        const ti = (1 - d / reachI) * bloom[idx];
+        if (ti > t) {
+          t = ti;
+          winnerUsesBoundaryNoise = rects[idx].hasBoundaryNoise;
+        }
       }
       if (t <= 0) continue;
 
       const { gx, gy } = cell;
-      // Edge-only noise (gating on t means the core stays clean — exactly
-      // the regression the user flagged previously).
+
+      if (winnerUsesBoundaryNoise) {
+        // === Hub: spatial coherent boundary noise =========================
+        // Iso-contour wobbles wave-like via smooth 2D noise sampled in
+        // SCREEN coords (so wavelength is visually constant across zoom)
+        // with a slow time drift. The noise is GATED by edgeFactor — it
+        // only displaces t for cells in the outer rim, leaving deeper
+        // cells with their clean halftone falloff. This keeps the core
+        // pattern perfectly regular while the boundary alone undulates.
+        const edgeFactor =
+          t < HUB_NOISE_EDGE_THRESHOLD ? 1 - t / HUB_NOISE_EDGE_THRESHOLD : 0;
+        let tEffective = t;
+        if (edgeFactor > 0) {
+          const nx = (gx * safeZoom) / HUB_NOISE_WAVELENGTH + tickSec * HUB_NOISE_DRIFT;
+          const ny = (gy * safeZoom) / HUB_NOISE_WAVELENGTH - tickSec * HUB_NOISE_DRIFT * 0.6;
+          const noise = smoothNoise2d(nx, ny);
+          tEffective = t + (noise - 0.5) * 2 * HUB_BOUNDARY_NOISE_AMP * edgeFactor;
+          if (tEffective <= 0) continue;
+        }
+        const rScreen = Math.pow(tEffective, HALO_FALLOFF) * HALO_MAX_DOT;
+        if (rScreen < 0.35) continue;
+        const rCanvas = rScreen / safeZoom;
+        const cxStr = (gx - svgX).toFixed(2);
+        const cyStr = (gy - svgY).toFixed(2);
+        const rStr = rCanvas.toFixed(2);
+        const dStr = (rCanvas * 2).toFixed(2);
+        segments.push(
+          `M ${cxStr} ${cyStr} m -${rStr} 0 a ${rStr} ${rStr} 0 1 0 ${dStr} 0 a ${rStr} ${rStr} 0 1 0 -${dStr} 0`,
+        );
+        continue;
+      }
+
+      // === Category / project: edge dropout + jitter + size noise =========
+      // (Original mechanism — speckled rim, clean core. Untouched.)
       const edgeFactor = t < HALO_NOISE_THRESHOLD ? 1 - t / HALO_NOISE_THRESHOLD : 0;
       const nDrop = hash2d(gx + 53, gy + 7);
       const nSize = hash2d(gx + 17, gy + 31);
@@ -581,15 +881,10 @@ function HaloLayer() {
 
       const sizeNoiseAmt = HALO_SIZE_NOISE * edgeFactor;
       const sizeMul = 1 - sizeNoiseAmt + nSize * (2 * sizeNoiseAmt);
-      // Radius in SCREEN px (constant across zoom).
       const rScreen = Math.pow(t, HALO_FALLOFF) * HALO_MAX_DOT * sizeMul;
       if (rScreen < 0.35) continue;
-      // Convert back to canvas px — the SVG itself sits inside the React
-      // Flow viewport transform that scales by `zoom`, so dividing here
-      // cancels that out and the final visible radius is rScreen.
       const rCanvas = rScreen / safeZoom;
 
-      // Jitter is also a SCREEN-px quantity → divide by zoom for canvas.
       const jitterCanvas = (HALO_GRID * HALO_POS_JITTER * edgeFactor) / safeZoom;
       const px = gx + (nX * 2 - 1) * jitterCanvas;
       const py = gy + (nY * 2 - 1) * jitterCanvas;
@@ -767,7 +1062,7 @@ const MOBILE_BREAKPOINT = 768;
 
 function MindMapInner({ projects }: { projects: Project[] }) {
   const router = useRouter();
-  const { fitView } = useReactFlow();
+  const { setViewport } = useReactFlow();
 
   const initialData = useMemo(() => {
     const { nodes, edges } = buildInitialGraph(projects);
@@ -784,6 +1079,31 @@ function MindMapInner({ projects }: { projects: Project[] }) {
   const [nodes, , onNodesChange] = useNodesState(initialData.nodes);
   const [edges, , onEdgesChange] = useEdgesState(initialData.edges);
 
+  // Static parent ↔ children maps for the hover-driven halo logic. Built
+  // from the same Notion-fed projects list React Flow already has, so
+  // they update in lockstep with the graph.
+  const projectMaps = useMemo<ProjectMapsCtx>(() => {
+    const projectCategory = new Map<string, string>();
+    const categoryProjects = new Map<string, string[]>();
+    for (const p of projects) {
+      const projId = `${PROJ_PREFIX}${p.id}`;
+      const catId = `${CAT_PREFIX}${p.categoryId}`;
+      projectCategory.set(projId, catId);
+      const arr = categoryProjects.get(catId);
+      if (arr) arr.push(projId);
+      else categoryProjects.set(catId, [projId]);
+    }
+    return { projectCategory, categoryProjects };
+  }, [projects]);
+
+  // Hovered-node state. null = default (hub halo only). Set by nodes via
+  // HoverContext below; HaloLayer reads it to compute target reach per id.
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const hoverCtx = useMemo<HoverCtx>(
+    () => ({ hoveredId, setHovered: setHoveredId }),
+    [hoveredId],
+  );
+
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
       if (node.id.startsWith(PROJ_PREFIX)) {
@@ -794,44 +1114,60 @@ function MindMapInner({ projects }: { projects: Project[] }) {
     [router],
   );
 
-  // Pick a viewport strategy based on screen width.
-  //   Desktop (>=768): fit the whole graph, clamp zoom so a huge monitor
-  //                    doesn't zoom in past 1.0 and a small laptop doesn't
-  //                    shrink past 0.45 (labels stay readable).
-  //   Mobile  (<768) : fit just hub + the category ring. Project nodes hang
-  //                    off-screen but are reachable by panning, and labels
-  //                    stay legible.
+  // Viewport math is driven directly off the viewport size rather than
+  // React Flow's fitView: we want the hub to ALWAYS land at the visible
+  // centre on first paint regardless of how the random project layout's
+  // bbox happens to skew. setViewport with tx/ty = vp/2 + zoom*0 maps
+  // canvas (0,0) → screen centre by construction.
+  //
+  // Zoom is picked so the category ring (RADIUS.category) + a bit of
+  // label slack fits inside the SHORT dimension at ~80% width. Caps:
+  //   mobile (<MOBILE_BREAKPOINT): zoom clamped to [0.4, 0.9] so small
+  //     phones don't end up zoomed in past the category labels; large
+  //     phones in landscape get a comfortable mid-range view.
+  //   desktop: clamped to [0.65, 1.1] so huge monitors don't blow up to
+  //     close-up zoom and tiny laptops still see the full inner ring.
   const focusViewport = useCallback(() => {
     if (typeof window === "undefined") return;
-    const isMobile = window.innerWidth < MOBILE_BREAKPOINT;
-    if (isMobile) {
-      const innerRing = [
-        { id: HUB_ID },
-        ...categories.map((c) => ({ id: `${CAT_PREFIX}${c.id}` })),
-      ];
-      fitView({
-        nodes: innerRing,
-        padding: 0.25,
-        maxZoom: 0.95,
-        duration: 200,
-      });
-    } else {
-      // minZoom raised so the initial fit is comfortably zoomed in even on
-      // larger viewports — full-graph view becomes a deliberate zoom-out the
-      // user has to make rather than the default.
-      fitView({
-        padding: 0.15,
-        minZoom: 0.75,
-        maxZoom: 1.1,
-        duration: 200,
-      });
-    }
-  }, [fitView]);
+    const vpW = window.innerWidth;
+    const vpH = window.innerHeight;
+    const isMobile = vpW < MOBILE_BREAKPOINT;
+    const minDim = Math.min(vpW, vpH);
+    const innerRadius = RADIUS.category + 90; // category centre + label slack
+    const fitZoom = (0.8 * minDim) / (2 * innerRadius);
+    const initialZoom = isMobile
+      ? Math.min(0.9, Math.max(0.4, fitZoom))
+      : Math.min(1.1, Math.max(0.65, fitZoom));
+    setViewport(
+      { x: vpW / 2, y: vpH / 2, zoom: initialZoom },
+      { duration: 200 },
+    );
+  }, [setViewport]);
 
   useEffect(() => {
     window.addEventListener("resize", focusViewport);
     return () => window.removeEventListener("resize", focusViewport);
   }, [focusViewport]);
+
+  // minZoom must be low enough that mobile users can zoom out to see
+  // the OUTER project ring (RADIUS.projectOuter + label slack) — the
+  // user reported that at the old fixed minZoom=0.55 a phone only saw
+  // a handful of nodes. Compute the zoom that makes the full graph
+  // diameter equal the viewport short-dim; cap above at 0.55 so
+  // desktops keep the existing comfortable lower bound.
+  const [minZoom, setMinZoom] = useState(0.55);
+  useEffect(() => {
+    const compute = () => {
+      if (typeof window === "undefined") return;
+      const minDim = Math.min(window.innerWidth, window.innerHeight);
+      const outerRadius = RADIUS.projectOuter + 140;
+      const fitAllZoom = minDim / (2 * outerRadius);
+      setMinZoom(Math.min(0.55, fitAllZoom));
+    };
+    compute();
+    window.addEventListener("resize", compute);
+    return () => window.removeEventListener("resize", compute);
+  }, []);
 
   // Toggle `will-change: transform` on the viewport via an `is-moving` class —
   // ONLY while the user is panning/zooming, removed 200ms after the last
@@ -875,25 +1211,29 @@ function MindMapInner({ projects }: { projects: Project[] }) {
   }, []);
 
   return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      onNodesChange={onNodesChange}
-      onEdgesChange={onEdgesChange}
-      onNodeClick={handleNodeClick}
-      onInit={focusViewport}
-      onMoveStart={handleMoveStart}
-      onMoveEnd={handleMoveEnd}
-      nodeTypes={nodeTypes}
-      edgeTypes={edgeTypes}
-      minZoom={0.55}
-      maxZoom={2}
-      nodesConnectable={false}
-      proOptions={{ hideAttribution: true }}
-      style={{ background: "transparent" }}
-    >
-      <HaloLayer />
-    </ReactFlow>
+    <ProjectMapsContext.Provider value={projectMaps}>
+      <HoverContext.Provider value={hoverCtx}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onNodeClick={handleNodeClick}
+          onInit={focusViewport}
+          onMoveStart={handleMoveStart}
+          onMoveEnd={handleMoveEnd}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          minZoom={minZoom}
+          maxZoom={2}
+          nodesConnectable={false}
+          proOptions={{ hideAttribution: true }}
+          style={{ background: "transparent" }}
+        >
+          <HaloLayer />
+        </ReactFlow>
+      </HoverContext.Provider>
+    </ProjectMapsContext.Provider>
   );
 }
 
