@@ -1,5 +1,31 @@
 @import "tailwindcss";
 
+/* Happiness Sans (Hyundai Department Store, free for commercial use).
+   Hosted on jsDelivr via projectnoonnu/noonfonts_2205. Three weights are
+   self-declared as @font-face so we can drive `font-weight: 400/700/900`
+   from Tailwind classes without depending on a third-party stylesheet. */
+@font-face {
+  font-family: "Happiness Sans";
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2205@1.0/Happiness-Sans-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Happiness Sans";
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2205@1.0/Happiness-Sans-Bold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Happiness Sans";
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+  src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2205@1.0/Happiness-Sans-Title.woff2") format("woff2");
+}
+
 :root {
   --background: #ffffff;
   --foreground: #000000;
@@ -22,7 +48,7 @@ body {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: "Happiness Sans", var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
 }
 
 /* Anti-ghosting tweaks for the React Flow canvas.
@@ -47,8 +73,21 @@ body {
   vector-effect: non-scaling-stroke;
 }
 
+/* React Flow's default stacking (edges < nodes) is preserved.
+   The halftone halo lives in its own portal'd layer at z-index -1 inside
+   the viewport stacking context, so it paints below both edges and nodes.
+   Final order: halo (back) → edges → nodes (front). */
+
 /* Class applied to .react-flow__viewport by MindMap during pan/zoom — opt-in
    GPU layer promotion. Removed shortly after movement stops. */
 .react-flow__viewport.is-moving {
   will-change: transform;
 }
+
+/* === Mind map project-node neon halo ===================================
+   The halftone dot ring is rendered in JSX via SVG (components/MindMap.tsx
+   → NeonHalftoneHalo) so dot radius can vary with distance from the node
+   edge — proper halftone where dots shrink as the field weakens, instead
+   of a uniform pattern that gets clipped by a CSS mask.
+   The soft blurred underglow stays as a sibling absolutely-positioned div
+   inside the project node. Both live behind the node body via z-index. */

@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>design system — palette options</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      :root {
+        --mono: ui-monospace, "SFMono-Regular", "Menlo", "Consolas", monospace;
+      }
+      html, body { background: #ECECEC; }
+      body {
+        font-family: var(--mono);
+        color: #111;
+        padding: 36px 20px 80px;
+        line-height: 1.4;
+      }
+      .page {
+        max-width: 1080px;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 28px;
+      }
+      .intro h1 {
+        font-size: 26px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+      .intro p {
+        font-size: 13px;
+        opacity: 0.7;
+        margin-top: 6px;
+      }
+      .palette {
+        padding: 32px 36px 36px;
+        border: 1px solid #1a1a1a;
+        position: relative;
+        overflow: hidden;
+      }
+      .palette__head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        margin-bottom: 20px;
+        gap: 12px;
+      }
+      .palette__name {
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: -0.005em;
+      }
+      .palette__vibe {
+        font-size: 12px;
+        opacity: 0.65;
+      }
+      .palette__rationale {
+        font-size: 12px;
+        max-width: 60ch;
+        margin-bottom: 24px;
+        opacity: 0.8;
+      }
+      .swatches {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 28px;
+      }
+      .swatch {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        align-items: flex-start;
+      }
+      .swatch__box {
+        width: 64px;
+        height: 64px;
+        border: 1px solid rgba(0, 0, 0, 0.15);
+        display: block;
+      }
+      .swatch__role {
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        opacity: 0.55;
+      }
+      .swatch__hex {
+        font-size: 11px;
+      }
+
+      .demo {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+        align-items: stretch;
+        min-height: 220px;
+      }
+      .demo__left { display: flex; flex-direction: column; gap: 14px; }
+      .demo__right {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+      .demo h2 {
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        line-height: 1.05;
+      }
+      .demo .meta {
+        font-size: 11px;
+        opacity: 0.6;
+      }
+      .demo p {
+        font-size: 13px;
+        max-width: 36ch;
+      }
+      .demo .toggle {
+        display: inline-flex;
+        gap: 4px;
+        margin-top: auto;
+      }
+      .demo .toggle button {
+        font-family: var(--mono);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        padding: 6px 14px;
+        border: 1px solid currentColor;
+        cursor: pointer;
+        background: transparent;
+        color: inherit;
+      }
+      .demo .toggle button.is-active {
+        background: currentColor;
+      }
+      .demo .toggle button.is-active span { color: var(--bg-color, white); }
+
+      /* Mini mind map preview */
+      .mini {
+        position: relative;
+        width: 100%;
+        height: 220px;
+      }
+      .mini svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+      .mini .node {
+        position: absolute;
+        font-family: var(--mono);
+        font-size: 10px;
+        padding: 4px 8px;
+        white-space: nowrap;
+        transform: translate(-50%, -50%);
+        border: 1px solid currentColor;
+        background: var(--bg-color, white);
+      }
+      .mini .node.hub {
+        font-size: 13px;
+        padding: 6px 12px;
+        font-weight: 600;
+      }
+      .mini .node.cat.is-active {
+        font-weight: 600;
+      }
+
+      /* === Option A — Paper academic ===================================== */
+      .pal-A { background: #F5F2E8; color: #1A1A1A; --bg-color: #F5F2E8; }
+      .pal-A .demo .toggle button.is-active { background: #B84B2F; border-color: #B84B2F; }
+      .pal-A .demo .toggle button.is-active span { color: #F5F2E8; }
+      .pal-A .mini .node.hub { background: #1A1A1A; color: #F5F2E8; border-color: #1A1A1A; }
+      .pal-A .mini .node.cat.accent { background: #B84B2F; color: #F5F2E8; border-color: #B84B2F; }
+      .pal-A .mini line { stroke: #1A1A1A; stroke-width: 1; }
+
+      /* === Option B variants — editorial mono + signature ================ */
+      .pal-B { background: #FFFFFF; color: #000000; --bg-color: #FFFFFF; }
+      .pal-B .demo .toggle button.is-active span { color: #FFFFFF; }
+      .pal-B .mini .node.hub { background: #000000; color: #FFFFFF; border-color: #000000; }
+      .pal-B .mini line { stroke: #000000; stroke-width: 1; }
+      /* swatchable accent driven by --accent on the section */
+      .pal-B .demo .toggle button.is-active { background: var(--accent); border-color: var(--accent); }
+      .pal-B .mini .node.cat.accent { background: var(--accent); color: #FFFFFF; border-color: var(--accent); }
+
+      /* === Option C — Terminal / CRT ===================================== */
+      .pal-C { background: #0B0F14; color: #E8E6E1; --bg-color: #0B0F14; }
+      .pal-C { border-color: #E8E6E1; }
+      .pal-C .demo .toggle button.is-active { background: #3CFFA2; border-color: #3CFFA2; }
+      .pal-C .demo .toggle button.is-active span { color: #0B0F14; }
+      .pal-C .mini .node.hub { background: #E8E6E1; color: #0B0F14; border-color: #E8E6E1; }
+      .pal-C .mini .node { background: #0B0F14; color: #E8E6E1; border-color: #E8E6E1; }
+      .pal-C .mini .node.cat.accent { background: #3CFFA2; color: #0B0F14; border-color: #3CFFA2; }
+      .pal-C .mini line { stroke: #E8E6E1; stroke-width: 1; }
+      .pal-C .swatch__box { border-color: rgba(232, 230, 225, 0.3); }
+
+      /* === Option D — Studio earth ======================================= */
+      .pal-D { background: #EDE7DA; color: #3A2E22; --bg-color: #EDE7DA; }
+      .pal-D { border-color: #3A2E22; }
+      .pal-D .demo .toggle button.is-active { background: #C66B3D; border-color: #C66B3D; }
+      .pal-D .demo .toggle button.is-active span { color: #EDE7DA; }
+      .pal-D .mini .node.hub { background: #3A2E22; color: #EDE7DA; border-color: #3A2E22; }
+      .pal-D .mini .node.cat.accent { background: #C66B3D; color: #EDE7DA; border-color: #C66B3D; }
+      .pal-D .mini line { stroke: #3A2E22; stroke-width: 1; }
+
+      /* === Option E — Risograph two-spot ================================= */
+      .pal-E { background: #F8F8F2; color: #131311; --bg-color: #F8F8F2; }
+      .pal-E .demo .toggle button.is-active { background: #4644D4; border-color: #4644D4; }
+      .pal-E .demo .toggle button.is-active span { color: #F8F8F2; }
+      .pal-E .mini .node.hub { background: #131311; color: #F8F8F2; border-color: #131311; }
+      .pal-E .mini .node.cat.accent-1 { background: #4644D4; color: #F8F8F2; border-color: #4644D4; }
+      .pal-E .mini .node.cat.accent-2 { background: #E84A4A; color: #F8F8F2; border-color: #E84A4A; }
+      .pal-E .mini line { stroke: #131311; stroke-width: 1; }
+
+      /* Accent picker rows for option B */
+      .b-variant-row {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 12px;
+        margin-top: 18px;
+      }
+      .b-variant {
+        padding: 12px;
+        border: 1px solid #000;
+      }
+      .b-variant__swatch {
+        width: 100%;
+        height: 36px;
+        margin-bottom: 8px;
+      }
+      .b-variant__name {
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .b-variant__hex {
+        font-size: 10px;
+        opacity: 0.6;
+      }
+
+      @media (max-width: 720px) {
+        .demo { grid-template-columns: 1fr; }
+        .b-variant-row { grid-template-columns: repeat(2, 1fr); }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div class="intro">
+        <h1>design system — palette options</h1>
+        <p>
+          5 directions. left column: typography + ui sample · right column:
+          mini mind-map preview using the palette colors. hex values listed
+          under each swatch.
+        </p>
+      </div>
+
+      <!-- ============================== A ============================== -->
+      <section class="palette pal-A">
+        <div class="palette__head">
+          <div class="palette__name">A · Paper academic</div>
+          <div class="palette__vibe">warm paper · ink · clay</div>
+        </div>
+        <p class="palette__rationale">
+          Closest in mood to the "drag around &amp; find out" reference. Warm
+          off-white base, ink-not-pure-black for body, single clay accent for
+          interactive states and category tags.
+        </p>
+        <div class="swatches">
+          <div class="swatch"><span class="swatch__box" style="background:#F5F2E8"></span><span class="swatch__role">bg</span><span class="swatch__hex">#F5F2E8</span></div>
+          <div class="swatch"><span class="swatch__box" style="background:#1A1A1A"></span><span class="swatch__role">primary</span><span class="swatch__hex">#1A1A1A</span></div>
+          <div class="swatch"><span class="swatch__box" style="background:#B84B2F"></span><span class="swatch__role">accent</span><span class="swatch__hex">#B84B2F</span></div>
+        </div>
+        <div class="demo">
+          <div class="demo__left">
+            <h2>Sunghun Park</h2>
+            <p>generative art · interactive media · exhibition · data visualization · frontend · research · others</p>
+            <div class="meta">2024 · Pagoda</div>
+            <div class="toggle">
+              <button class="is-active"><span>map</span></button>
+              <button><span>list</span></button>
+            </div>
+          </div>
+          <div class="demo__right">
+            <div class="mini">
+              <svg viewBox="0 0 360 220" preserveAspectRatio="none">
+                <line x1="180" y1="110" x2="80" y2="50"></line>
+                <line x1="180" y1="110" x2="290" y2="55"></line>
+                <line x1="180" y1="110" x2="60" y2="180"></line>
+                <line x1="180" y1="110" x2="310" y2="180"></line>
+              </svg>
+              <div class="node hub" style="left:50%;top:50%">Sunghun Park</div>
+              <div class="node cat" style="left:22%;top:22%">Generative Art</div>
+              <div class="node cat accent" style="left:80%;top:25%">Exhibition</div>
+              <div class="node cat" style="left:17%;top:82%">Frontend</div>
+              <div class="node cat" style="left:86%;top:82%">Interactive Media</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================== B ============================== -->
+      <section class="palette pal-B" style="--accent: #E63946;">
+        <div class="palette__head">
+          <div class="palette__name">B · Editorial mono + one signature</div>
+          <div class="palette__vibe">pure white · true black · pick a signature</div>
+        </div>
+        <p class="palette__rationale">
+          Direct extension of the current prototype. Maximum contrast base,
+          and the entire identity rests on which signature color you pick.
+          Compare the five accent options below — the active mind-map and
+          toggle swap to whichever is current on the section.
+        </p>
+        <div class="swatches">
+          <div class="swatch"><span class="swatch__box" style="background:#FFFFFF; border-color:#000"></span><span class="swatch__role">bg</span><span class="swatch__hex">#FFFFFF</span></div>
+          <div class="swatch"><span class="swatch__box" style="background:#000000"></span><span class="swatch__role">primary</span><span class="swatch__hex">#000000</span></div>
+          <div class="swatch"><span class="swatch__box" style="background:#E63946"></span><span class="swatch__role">accent (preview)</span><span class="swatch__hex">#E63946</span></div>
+        </div>
+        <div class="demo">
+          <div class="demo__left">
+            <h2>Sunghun Park</h2>
+            <p>generative art · interactive media · exhibition · data visualization · frontend · research · others</p>
+            <div class="meta">2024 · Pagoda</div>
+            <div class="toggle">
+              <button class="is-active"><span>map</span></button>
+              <button><span>list</span></button>
+            </div>
+          </div>
+          <div class="demo__right">
+            <div class="mini">
+              <svg viewBox="0 0 360 220" preserveAspectRatio="none">
+                <line x1="180" y1="110" x2="80" y2="50"></line>
+                <line x1="180" y1="110" x2="290" y2="55"></line>
+                <line x1="180" y1="110" x2="60" y2="180"></line>
+                <line x1="180" y1="110" x2="310" y2="180"></line>
+              </svg>
+              <div class="node hub" style="left:50%;top:50%">Sunghun Park</div>
+              <div class="node cat" style="left:22%;top:22%">Generative Art</div>
+              <div class="node cat accent" style="left:80%;top:25%">Exhibition</div>
+              <div class="node cat" style="left:17%;top:82%">Frontend</div>
+              <div class="node cat" style="left:86%;top:82%">Interactive Media</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="b-variant-row">
+          <div class="b-variant"><span class="b-variant__swatch" style="background:#E63946"></span><span class="b-variant__name">B1 · vermillion</span><br /><span class="b-variant__hex">#E63946</span></div>
+          <div class="b-variant"><span class="b-variant__swatch" style="background:#FF6B35"></span><span class="b-variant__name">B2 · hot orange</span><br /><span class="b-variant__hex">#FF6B35</span></div>
+          <div class="b-variant"><span class="b-variant__swatch" style="background:#FFD60A"></span><span class="b-variant__name">B3 · canary</span><br /><span class="b-variant__hex">#FFD60A</span></div>
+          <div class="b-variant"><span class="b-variant__swatch" style="background:#2563EB"></span><span class="b-variant__name">B4 · cobalt</span><br /><span class="b-variant__hex">#2563EB</span></div>
+          <div class="b-variant"><span class="b-variant__swatch" style="background:#B3D900"></span><span class="b-variant__name">B5 · chartreuse</span><br /><span class="b-variant__hex">#B3D900</span></div>
+        </div>
+      </section>
+
+      <!-- ============================== C ============================== -->
+      <section class="palette pal-C">
+        <div class="palette__head">
+          <div class="palette__name">C · Terminal / CRT</div>
+          <div class="palette__vibe">near-black · warm white · phosphor</div>
+        </div>
+        <p class="palette__rationale">
+          Live-coder / generative coder energy. Best for a portfolio where the
+          generative + p5 side wants to lead the identity. Cover images of
+          quieter, photographic exhibition work need to be judged carefully
+          against the dark base.
+        </p>
+        <div class="swatches">
+          <div class="swatch"><span class="swatch__box" style="background:#0B0F14; border-color: rgba(232, 230, 225, 0.4);"></span><span class="swatch__role">bg</span><span class="swatch__hex">#0B0F14</span></div>
+          <div class="swatch"><span class="swatch__box" style="background:#E8E6E1"></span><span class="swatch__role">primary</span><span class="swatch__hex">#E8E6E1</span></div>
+          <div class="swatch"><span class="swatch__box" style="background:#3CFFA2"></span><span class="swatch__role">accent</span><span class="swatch__hex">#3CFFA2</span></div>
+        </div>
+        <div class="demo">
+          <div class="demo__left">
+            <h2>Sunghun Park</h2>
+            <p>generative art · interactive media · exhibition · data visualization · frontend · research · others</p>
+            <div class="meta">2024 · Pagoda</div>
+            <div class="toggle">
+              <button class="is-active"><span>map</span></button>
+              <button><span>list</span></button>
+            </div>
+          </div>
+          <div class="demo__right">
+            <div class="mini">
+              <svg viewBox="0 0 360 220" preserveAspectRatio="none">
+                <line x1="180" y1="110" x2="80" y2="50"></line>
+                <line x1="180" y1="110" x2="290" y2="55"></line>
+                <line x1="180" y1="110" x2="60" y2="180"></line>
+                <line x1="180" y1="110" x2="310" y2="180"></line>
+              </svg>
+              <div class="node hub" style="left:50%;top:50%">Sunghun Park</div>
+              <div class="node cat" style="left:22%;top:22%">Generative Art</div>
+              <div class="node cat accent" style="left:80%;top:25%">Exhibition</div>
+              <div class="node cat" style="left:17%;top:82%">Frontend</div>
+              <div class="node cat" style="left:86%;top:82%">Interactive Media</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================== D ============================== -->
+      <section class="palette pal-D">
+        <div class="palette__head">
+          <div class="palette__name">D · Studio earth</div>
+          <div class="palette__vibe">ecru sand · chocolate · burnt sienna</div>
+        </div>
+        <p class="palette__rationale">
+          Print-catalogue / gallery aesthetic. Suits the works that engage
+          physical material (땅이 입는 옷, 하동시장, Farming Land). May feel
+          slightly too "gallery" for digital generative work — tradeoff.
+        </p>
+        <div class="swatches">
+          <div class="swatch"><span class="swatch__box" style="background:#EDE7DA"></span><span class="swatch__role">bg</span><span class="swatch__hex">#EDE7DA</span></div>
+          <div class="swatch"><span class="swatch__box" style="background:#3A2E22"></span><span class="swatch__role">primary</span><span class="swatch__hex">#3A2E22</span></div>
+          <div class="swatch"><span class="swatch__box" style="background:#C66B3D"></span><span class="swatch__role">accent</span><span class="swatch__hex">#C66B3D</span></div>
+        </div>
+        <div class="demo">
+          <div class="demo__left">
+            <h2>Sunghun Park</h2>
+            <p>generative art · interactive media · exhibition · data visualization · frontend · research · others</p>
+            <div class="meta">2024 · Pagoda</div>
+            <div class="toggle">
+              <button class="is-active"><span>map</span></button>
+              <button><span>list</span></button>
+            </div>
+          </div>
+          <div class="demo__right">
+            <div class="mini">
+              <svg viewBox="0 0 360 220" preserveAspectRatio="none">
+                <line x1="180" y1="110" x2="80" y2="50"></line>
+                <line x1="180" y1="110" x2="290" y2="55"></line>
+                <line x1="180" y1="110" x2="60" y2="180"></line>
+                <line x1="180" y1="110" x2="310" y2="180"></line>
+              </svg>
+              <div class="node hub" style="left:50%;top:50%">Sunghun Park</div>
+              <div class="node cat" style="left:22%;top:22%">Generative Art</div>
+              <div class="node cat accent" style="left:80%;top:25%">Exhibition</div>
+              <div class="node cat" style="left:17%;top:82%">Frontend</div>
+              <div class="node cat" style="left:86%;top:82%">Interactive Media</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================== E ============================== -->
+      <section class="palette pal-E">
+        <div class="palette__head">
+          <div class="palette__name">E · Risograph two-spot</div>
+          <div class="palette__vibe">eggshell · ink · riso ultramarine + riso red</div>
+        </div>
+        <p class="palette__rationale">
+          Two-accent palette. Categories or subsections can be assigned to
+          either accent for visual rhythm. Requires more discipline than the
+          one-accent options, but gives the strongest "zine / printmaker"
+          identity.
+        </p>
+        <div class="swatches">
+          <div class="swatch"><span class="swatch__box" style="background:#F8F8F2"></span><span class="swatch__role">bg</span><span class="swatch__hex">#F8F8F2</span></div>
+          <div class="swatch"><span class="swatch__box" style="background:#131311"></span><span class="swatch__role">primary</span><span class="swatch__hex">#131311</span></div>
+          <div class="swatch"><span class="swatch__box" style="background:#4644D4"></span><span class="swatch__role">accent · 1</span><span class="swatch__hex">#4644D4</span></div>
+          <div class="swatch"><span class="swatch__box" style="background:#E84A4A"></span><span class="swatch__role">accent · 2</span><span class="swatch__hex">#E84A4A</span></div>
+        </div>
+        <div class="demo">
+          <div class="demo__left">
+            <h2>Sunghun Park</h2>
+            <p>generative art · interactive media · exhibition · data visualization · frontend · research · others</p>
+            <div class="meta">2024 · Pagoda</div>
+            <div class="toggle">
+              <button class="is-active"><span>map</span></button>
+              <button><span>list</span></button>
+            </div>
+          </div>
+          <div class="demo__right">
+            <div class="mini">
+              <svg viewBox="0 0 360 220" preserveAspectRatio="none">
+                <line x1="180" y1="110" x2="80" y2="50"></line>
+                <line x1="180" y1="110" x2="290" y2="55"></line>
+                <line x1="180" y1="110" x2="60" y2="180"></line>
+                <line x1="180" y1="110" x2="310" y2="180"></line>
+              </svg>
+              <div class="node hub" style="left:50%;top:50%">Sunghun Park</div>
+              <div class="node cat accent-1" style="left:22%;top:22%">Generative Art</div>
+              <div class="node cat accent-2" style="left:80%;top:25%">Exhibition</div>
+              <div class="node cat" style="left:17%;top:82%">Frontend</div>
+              <div class="node cat accent-1" style="left:86%;top:82%">Interactive Media</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="intro" style="margin-top:24px">
+        <p>http://localhost:3000/palette.html · hard refresh after edits to globals to bust CSS cache</p>
+      </div>
+    </div>
+  </body>
+</html>

@@ -38,7 +38,7 @@ function ProjectRow({ project }: { project: Project }) {
     <li>
       <Link
         href={`/project/${project.id}`}
-        className="flex items-center gap-4 p-2 -mx-2 hover:bg-black hover:text-white transition-colors group"
+        className="flex items-center gap-4 p-2 -mx-2 hover:bg-[#39FF14] hover:text-black transition-colors group"
       >
         <div className="w-32 h-20 flex-shrink-0 border border-black bg-white overflow-hidden">
           {!coverFailed ? (

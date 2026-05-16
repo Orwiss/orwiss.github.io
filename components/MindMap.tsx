@@ -12,6 +12,7 @@ import {
   useNodesState,
   useEdgesState,
   useReactFlow,
+  useStore,
   type Node,
   type Edge,
   type NodeProps,
@@ -50,7 +51,7 @@ function HubNode({ data }: NodeProps) {
 
 function CategoryNode({ data }: NodeProps) {
   return (
-    <div className="bg-white border border-black px-5 py-2.5 text-xl whitespace-nowrap">
+    <div className="bg-[#DDD] border rounded-full border-black px-5 py-2.5 text-xl whitespace-nowrap">
       {String(data.label)}
       <HiddenHandles />
     </div>
@@ -64,6 +65,124 @@ const PREVIEW_WIDTH = 416;
 const PREVIEW_HEIGHT = 320;
 const PREVIEW_GAP = 16;
 const VIEWPORT_MARGIN = 12;
+
+// === Neon halftone halo (SVG, true halftone) =============================
+// Dots are laid out on a uniform grid around the node. Each dot's radius is
+// a function of its distance from the nearest point on the node's bounding
+// rectangle: dots adjacent to the node are at full size and shrink smoothly
+// toward zero at the halo's outer reach. Dots are full circles — never
+// clipped — which is the defining property a CSS mask can't give us.
+const HALO_NEON_COLOR = "#39ff14";
+const HALO_PAD = 130;          // px the halo extends past each node edge
+const HALO_GRID = 10;          // px between dot centres
+const HALO_RANGE = HALO_PAD;   // px over which dot radius decays to zero
+const HALO_MAX_DOT = HALO_GRID / 2; // largest dot radius (touches neighbours at peak)
+const HALO_FALLOFF = 1.7;      // exponent controlling how steeply dots shrink
+const HALO_POS_JITTER = 0.35;  // ± fraction of HALO_GRID a dot can wander off its cell (at edge)
+const HALO_SIZE_NOISE = 0.55;  // ± fraction by which per-cell noise modulates dot radius (at edge)
+const HALO_NOISE_THRESHOLD = 0.55; // t value above which the core stays perfectly regular
+                                   // (lower = more area kept clean; higher = noise reaches inward)
+
+// Deterministic 2D hash → [0, 1). Cheap, stable per (x, y) cell so the
+// pattern doesn't shimmer between renders / drags / zooms.
+function hash2d(x: number, y: number): number {
+  const s = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+  return s - Math.floor(s);
+}
+
+function NeonHalftoneHalo({
+  nodeWidth,
+  nodeHeight,
+}: {
+  nodeWidth: number;
+  nodeHeight: number;
+}) {
+  const width = nodeWidth + HALO_PAD * 2;
+  const height = nodeHeight + HALO_PAD * 2;
+  const cx = width / 2;
+  const cy = height / 2;
+  const halfW = nodeWidth / 2;
+  const halfH = nodeHeight / 2;
+
+  const circles: React.ReactNode[] = [];
+  for (let gy = HALO_GRID / 2; gy < height; gy += HALO_GRID) {
+    for (let gx = HALO_GRID / 2; gx < width; gx += HALO_GRID) {
+      // Distance from this dot to the node's rectangular boundary. Inside
+      // the node body distToNode is 0 → dots render at max size. The node
+      // body paints over them in the higher stacking layer, but because the
+      // pattern still EXISTS underneath, the visible halo flows seamlessly
+      // out from the box edges instead of leaving an empty band there.
+      const dx = Math.abs(gx - cx) - halfW;
+      const dy = Math.abs(gy - cy) - halfH;
+      const outsideX = Math.max(0, dx);
+      const outsideY = Math.max(0, dy);
+      const distToNode = Math.sqrt(outsideX * outsideX + outsideY * outsideY);
+
+      const t = Math.max(0, 1 - distToNode / HALO_RANGE);
+
+      // edgeFactor: 0 in the bright core (t ≥ HALO_NOISE_THRESHOLD), grows
+      // smoothly to 1 at the halo's outer edge (t → 0). All randomness is
+      // multiplied by this factor so the core stays a clean tight grid and
+      // only the falloff zone breaks up into organic noise.
+      const edgeFactor = Math.max(0, 1 - t / HALO_NOISE_THRESHOLD);
+
+      // Three deterministic noise streams per cell.
+      const nDrop = hash2d(gx + 53, gy + 7);
+      const nSize = hash2d(gx + 17, gy + 31);
+      const nX = hash2d(gx, gy);
+      const nY = hash2d(gx + 91, gy + 19);
+
+      // Dropout — only kicks in once we're past the noise threshold. Keep
+      // probability scales with t inside the edge zone so the dot field
+      // fades into emptiness rather than ending in a clean ring of tiny
+      // dots.
+      if (edgeFactor > 0 && nDrop > Math.min(1, t / HALO_NOISE_THRESHOLD)) {
+        continue;
+      }
+
+      // Size noise — symmetric ±HALO_SIZE_NOISE, scaled by edgeFactor.
+      const sizeNoiseAmt = HALO_SIZE_NOISE * edgeFactor;
+      const sizeMul = 1 - sizeNoiseAmt + nSize * (2 * sizeNoiseAmt);
+      const r = Math.pow(t, HALO_FALLOFF) * HALO_MAX_DOT * sizeMul;
+      if (r < 0.35) continue; // sub-pixel dots aren't worth drawing
+
+      // Position jitter — likewise scaled by edgeFactor so center dots stay
+      // locked to their cells.
+      const jitter = HALO_GRID * HALO_POS_JITTER * edgeFactor;
+      const px = gx + (nX * 2 - 1) * jitter;
+      const py = gy + (nY * 2 - 1) * jitter;
+
+      circles.push(
+        <circle
+          key={`${gx}-${gy}`}
+          cx={px}
+          cy={py}
+          r={r}
+          fill={HALO_NEON_COLOR}
+        />,
+      );
+    }
+  }
+
+  return (
+    <svg
+      aria-hidden
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      style={{
+        position: "absolute",
+        left: -HALO_PAD,
+        top: -HALO_PAD,
+        pointerEvents: "none",
+        zIndex: -1,
+        display: "block",
+      }}
+    >
+      {circles}
+    </svg>
+  );
+}
 
 function ProjectNode({ data }: NodeProps) {
   const [hovered, setHovered] = useState(false);
@@ -193,6 +312,43 @@ function boundaryPoint(node: MeasuredNode, towards: { x: number; y: number }) {
   return { x: cx + dx * t, y: cy + dy * t };
 }
 
+// Stadium / pill boundary intersection. Used for nodes with `rounded-full`
+// (category nodes) so edges anchor flush to the curved edge instead of
+// overshooting the rectangular bounding box at the rounded corners.
+function pillBoundary(node: MeasuredNode, towards: { x: number; y: number }) {
+  const w = node.measured?.width ?? 120;
+  const h = node.measured?.height ?? 32;
+  const cx = node.position.x + w / 2;
+  const cy = node.position.y + h / 2;
+  const dx = towards.x - cx;
+  const dy = towards.y - cy;
+  if (dx === 0 && dy === 0) return { x: cx, y: cy };
+
+  const r = h / 2;                          // pill end radius
+  const rectHalfW = Math.max(0, w / 2 - r); // half-width of the flat midsection
+
+  // First check whether the ray hits the flat top/bottom band (y = ±r within
+  // the rectangular midsection). If it does, that's the boundary point.
+  if (dy !== 0) {
+    const tFlat = Math.abs(r / dy);
+    const xAtFlat = dx * tFlat;
+    if (Math.abs(xAtFlat) <= rectHalfW) {
+      return { x: cx + xAtFlat, y: cy + Math.sign(dy) * r };
+    }
+  }
+
+  // Otherwise the ray exits through one of the semicircular caps centred at
+  // (±rectHalfW, 0). Solve |t·d − (sideX, 0)| = r for t.
+  const sideX = dx >= 0 ? rectHalfW : -rectHalfW;
+  const a = dx * dx + dy * dy;
+  const b = -2 * dx * sideX;
+  const c = sideX * sideX - r * r;
+  const disc = b * b - 4 * a * c;
+  if (disc < 0) return { x: cx, y: cy }; // shouldn't happen geometrically
+  const t = (-b + Math.sqrt(disc)) / (2 * a);
+  return { x: cx + t * dx, y: cy + t * dy };
+}
+
 function center(node: MeasuredNode) {
   const w = node.measured?.width ?? 120;
   const h = node.measured?.height ?? 32;
@@ -204,8 +360,12 @@ function FloatingEdge({ id, source, target, style }: EdgeProps) {
   const targetNode = useInternalNode(target);
   if (!sourceNode || !targetNode) return null;
 
-  const s = boundaryPoint(sourceNode as MeasuredNode, center(targetNode as MeasuredNode));
-  const t = boundaryPoint(targetNode as MeasuredNode, center(sourceNode as MeasuredNode));
+  // Category nodes are pills (rounded-full); everyone else is a sharp box.
+  // Dispatch boundary calc per node shape so edges land on the visible edge.
+  const sourceFn = source.startsWith(CAT_PREFIX) ? pillBoundary : boundaryPoint;
+  const targetFn = target.startsWith(CAT_PREFIX) ? pillBoundary : boundaryPoint;
+  const s = sourceFn(sourceNode as MeasuredNode, center(targetNode as MeasuredNode));
+  const t = targetFn(targetNode as MeasuredNode, center(sourceNode as MeasuredNode));
 
   return (
     <path
@@ -226,6 +386,66 @@ const nodeTypes = {
 const edgeTypes = {
   floating: FloatingEdge,
 };
+
+// === Halo layer ==========================================================
+// Renders every project node's neon halftone halo into a sibling div that
+// lives inside .react-flow__viewport via portal. That div sits at z-index
+// -1 within the viewport stacking context, so the natural React Flow paint
+// order becomes: halo (back) → edges → nodes (front). Halos transform with
+// the viewport for free because they share the viewport's CSS transform.
+
+function HaloLayer() {
+  const domNode = useStore((s) => s.domNode);
+  const nodeLookup = useStore((s) => s.nodeLookup);
+
+  if (!domNode) return null;
+  const viewport = domNode.querySelector<HTMLElement>(".react-flow__viewport");
+  if (!viewport) return null;
+
+  type Item = { id: string; x: number; y: number; w: number; h: number };
+  const items: Item[] = [];
+  nodeLookup.forEach((internalNode, id) => {
+    if (!id.startsWith(PROJ_PREFIX)) return;
+    const w = internalNode.measured?.width;
+    const h = internalNode.measured?.height;
+    if (!w || !h) return;
+    items.push({
+      id,
+      x: internalNode.position.x,
+      y: internalNode.position.y,
+      w,
+      h,
+    });
+  });
+
+  return createPortal(
+    <div
+      aria-hidden
+      style={{
+        position: "absolute",
+        inset: 0,
+        pointerEvents: "none",
+        zIndex: -1,
+      }}
+    >
+      {items.map((it) => (
+        <div
+          key={it.id}
+          style={{
+            position: "absolute",
+            left: it.x,
+            top: it.y,
+            width: it.w,
+            height: it.h,
+          }}
+        >
+          <NeonHalftoneHalo nodeWidth={it.w} nodeHeight={it.h} />
+        </div>
+      ))}
+    </div>,
+    viewport,
+  );
+}
 
 // === Graph construction ===
 
@@ -405,14 +625,17 @@ function MindMapInner({ projects }: { projects: Project[] }) {
       fitView({
         nodes: innerRing,
         padding: 0.25,
-        maxZoom: 0.85,
+        maxZoom: 0.95,
         duration: 200,
       });
     } else {
+      // minZoom raised so the initial fit is comfortably zoomed in even on
+      // larger viewports — full-graph view becomes a deliberate zoom-out the
+      // user has to make rather than the default.
       fitView({
         padding: 0.15,
-        minZoom: 0.45,
-        maxZoom: 1.0,
+        minZoom: 0.75,
+        maxZoom: 1.1,
         duration: 200,
       });
     }
@@ -476,12 +699,14 @@ function MindMapInner({ projects }: { projects: Project[] }) {
       onMoveEnd={handleMoveEnd}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
-      minZoom={0.2}
+      minZoom={0.55}
       maxZoom={2}
       nodesConnectable={false}
       proOptions={{ hideAttribution: true }}
       style={{ background: "transparent" }}
-    />
+    >
+      <HaloLayer />
+    </ReactFlow>
   );
 }
 
