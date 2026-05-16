@@ -59,7 +59,7 @@ function HubNode({ data }: NodeProps) {
     <div
       onMouseEnter={() => setHovered(HUB_ID)}
       onMouseLeave={() => setHovered(null)}
-      className="bg-black text-white px-9 py-4 text-4xl whitespace-nowrap tracking-tight"
+      className="bg-black text-white px-12 py-5 text-5xl sm:text-4xl sm:px-9 sm:py-4 whitespace-nowrap tracking-tight"
     >
       {String(data.label)}
       <HiddenHandles />
@@ -73,7 +73,7 @@ function CategoryNode({ id, data }: NodeProps) {
     <div
       onMouseEnter={() => setHovered(id)}
       onMouseLeave={() => setHovered(null)}
-      className="bg-[#DDD] border rounded-full border-black px-7 py-3 text-2xl whitespace-nowrap"
+      className="bg-[#DDD] border rounded-full border-black px-9 py-4 text-3xl sm:text-2xl sm:px-7 sm:py-3 whitespace-nowrap"
     >
       {String(data.label)}
       <HiddenHandles />
@@ -161,10 +161,16 @@ function hashString(str: string): number {
 // hover handlers through React Flow's nodeTypes plumbing.
 type HoverCtx = {
   hoveredId: string | null;
+  // Set independently by React Flow's drag lifecycle; takes precedence
+  // over hoveredId so that fast cursor motion outpacing the dragged
+  // node (which fires mouseLeave → clears hoveredId) doesn't strip the
+  // halo from the node the user is actively manipulating.
+  draggingId: string | null;
   setHovered: (id: string | null) => void;
 };
 const HoverContext = createContext<HoverCtx>({
   hoveredId: null,
+  draggingId: null,
   setHovered: () => {},
 });
 
@@ -235,7 +241,7 @@ function ProjectNode({ id, data }: NodeProps) {
       ref={ref}
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
-      className="relative bg-white border border-black px-5 py-2.5 text-xl whitespace-nowrap cursor-pointer transition-colors hover:bg-black hover:text-white"
+      className="relative bg-white border border-black px-7 py-3 text-2xl sm:text-xl sm:px-5 sm:py-2.5 whitespace-nowrap cursor-pointer transition-colors hover:bg-black hover:text-white"
     >
       {label}
       <HiddenHandles />
@@ -490,28 +496,32 @@ function HaloLayer() {
   );
   const storeApi = useStoreApi();
 
-  const { hoveredId } = useContext(HoverContext);
+  const { hoveredId, draggingId } = useContext(HoverContext);
   const { projectCategory, categoryProjects } = useContext(ProjectMapsContext);
 
   // === Reach state ======================================================
-  // targetReach: SCREEN-px max reach per node id derived from the current
-  // hover. Default state = hub at HUB_HALO_PAD. Category hover lights up
-  // the category + its children at HALO_PAD. Project hover lights up its
+  // Active id = drag wins over hover (drag is the user's deliberate
+  // gesture; fast mouse motion outpacing the node would otherwise drop
+  // the halo via the cleared mouseLeave hoveredId). targetReach is the
+  // SCREEN-px max reach per node id derived from that active id:
+  // default state = hub at HUB_HALO_PAD; category active lights up the
+  // category + its children at HALO_PAD; project active lights up its
   // parent category + itself at HALO_PAD.
+  const activeId = draggingId ?? hoveredId;
   const targetReach = useMemo(() => {
     const m = new Map<string, number>();
-    if (hoveredId === null || hoveredId === HUB_ID) {
+    if (activeId === null || activeId === HUB_ID) {
       m.set(HUB_ID, HUB_HALO_PAD);
-    } else if (hoveredId.startsWith(CAT_PREFIX)) {
-      m.set(hoveredId, HALO_PAD);
-      categoryProjects.get(hoveredId)?.forEach((pid) => m.set(pid, HALO_PAD));
-    } else if (hoveredId.startsWith(PROJ_PREFIX)) {
-      const catId = projectCategory.get(hoveredId);
+    } else if (activeId.startsWith(CAT_PREFIX)) {
+      m.set(activeId, HALO_PAD);
+      categoryProjects.get(activeId)?.forEach((pid) => m.set(pid, HALO_PAD));
+    } else if (activeId.startsWith(PROJ_PREFIX)) {
+      const catId = projectCategory.get(activeId);
       if (catId) m.set(catId, HALO_PAD);
-      m.set(hoveredId, HALO_PAD);
+      m.set(activeId, HALO_PAD);
     }
     return m;
-  }, [hoveredId, projectCategory, categoryProjects]);
+  }, [activeId, projectCategory, categoryProjects]);
 
   // currentReach mutated in-place every RAF tick by the interpolation
   // loop. Seeded with hub at full so the very first paint is the default
@@ -1063,6 +1073,24 @@ const MOBILE_BREAKPOINT = 768;
 function MindMapInner({ projects }: { projects: Project[] }) {
   const router = useRouter();
   const { setViewport } = useReactFlow();
+  const storeApi = useStoreApi();
+  // Subscribe to the React Flow container's measured size — this differs
+  // from window.innerWidth/Height when a scrollbar is present or the
+  // container doesn't fill the viewport, and using the wrong dimension
+  // was why the hub landed slightly off-centre on first paint.
+  const containerSize = useStore(
+    (s) => `${Math.round(s.width)}x${Math.round(s.height)}`,
+  );
+  // Also subscribe to the hub's measured box so we re-focus once React
+  // Flow has actually measured it — the node `position` is the
+  // TOP-LEFT corner, so without the half-W/half-H offset the hub
+  // lands down-right of the viewport centre.
+  const hubMeasureKey = useStore((s) => {
+    const hub = s.nodeLookup.get(HUB_ID);
+    const w = hub?.measured?.width;
+    const h = hub?.measured?.height;
+    return w && h ? `${Math.round(w)}x${Math.round(h)}` : "";
+  });
 
   const initialData = useMemo(() => {
     const { nodes, edges } = buildInitialGraph(projects);
@@ -1099,10 +1127,25 @@ function MindMapInner({ projects }: { projects: Project[] }) {
   // Hovered-node state. null = default (hub halo only). Set by nodes via
   // HoverContext below; HaloLayer reads it to compute target reach per id.
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  // Drag state — set by React Flow's node-drag lifecycle below. Drives
+  // the halo independently from hoveredId so that a fast drag (which
+  // makes the cursor leave the node's DOM mid-gesture and clear
+  // hoveredId) still keeps the halo lit on the manipulated node.
+  const [draggingId, setDraggingId] = useState<string | null>(null);
   const hoverCtx = useMemo<HoverCtx>(
-    () => ({ hoveredId, setHovered: setHoveredId }),
-    [hoveredId],
+    () => ({ hoveredId, draggingId, setHovered: setHoveredId }),
+    [hoveredId, draggingId],
   );
+
+  const handleNodeDragStart = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      setDraggingId(node.id);
+    },
+    [],
+  );
+  const handleNodeDragStop = useCallback(() => {
+    setDraggingId(null);
+  }, []);
 
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
@@ -1128,9 +1171,10 @@ function MindMapInner({ projects }: { projects: Project[] }) {
   //   desktop: clamped to [0.65, 1.1] so huge monitors don't blow up to
   //     close-up zoom and tiny laptops still see the full inner ring.
   const focusViewport = useCallback(() => {
-    if (typeof window === "undefined") return;
-    const vpW = window.innerWidth;
-    const vpH = window.innerHeight;
+    const state = storeApi.getState();
+    const vpW = state.width;
+    const vpH = state.height;
+    if (!vpW || !vpH) return;
     const isMobile = vpW < MOBILE_BREAKPOINT;
     const minDim = Math.min(vpW, vpH);
     const innerRadius = RADIUS.category + 90; // category centre + label slack
@@ -1138,16 +1182,29 @@ function MindMapInner({ projects }: { projects: Project[] }) {
     const initialZoom = isMobile
       ? Math.min(0.9, Math.max(0.4, fitZoom))
       : Math.min(1.1, Math.max(0.65, fitZoom));
-    setViewport(
-      { x: vpW / 2, y: vpH / 2, zoom: initialZoom },
-      { duration: 200 },
-    );
-  }, [setViewport]);
 
+    // Hub position is its TOP-LEFT corner in canvas coords. Offset the
+    // translate by half the hub's measured box (scaled by zoom) so the
+    // hub's VISUAL CENTRE lands at the viewport centre. If we don't yet
+    // have a measurement, fall back to no offset; the hubMeasureKey
+    // subscription will trigger another focusViewport once measurement
+    // arrives.
+    const hub = state.nodeLookup.get(HUB_ID);
+    const hubW = hub?.measured?.width ?? 0;
+    const hubH = hub?.measured?.height ?? 0;
+    const tx = vpW / 2 - (hubW / 2) * initialZoom;
+    const ty = vpH / 2 - (hubH / 2) * initialZoom;
+
+    setViewport({ x: tx, y: ty, zoom: initialZoom }, { duration: 200 });
+  }, [storeApi, setViewport]);
+
+  // Re-centre whenever React Flow's measured container size or the hub
+  // node's measured box changes. Container measurement happens on mount
+  // and resize; the hub measurement lands on the first render right
+  // after that, and we need both to compute the correct translate.
   useEffect(() => {
-    window.addEventListener("resize", focusViewport);
-    return () => window.removeEventListener("resize", focusViewport);
-  }, [focusViewport]);
+    focusViewport();
+  }, [containerSize, hubMeasureKey, focusViewport]);
 
   // minZoom must be low enough that mobile users can zoom out to see
   // the OUTER project ring (RADIUS.projectOuter + label slack) — the
@@ -1157,17 +1214,13 @@ function MindMapInner({ projects }: { projects: Project[] }) {
   // desktops keep the existing comfortable lower bound.
   const [minZoom, setMinZoom] = useState(0.55);
   useEffect(() => {
-    const compute = () => {
-      if (typeof window === "undefined") return;
-      const minDim = Math.min(window.innerWidth, window.innerHeight);
-      const outerRadius = RADIUS.projectOuter + 140;
-      const fitAllZoom = minDim / (2 * outerRadius);
-      setMinZoom(Math.min(0.55, fitAllZoom));
-    };
-    compute();
-    window.addEventListener("resize", compute);
-    return () => window.removeEventListener("resize", compute);
-  }, []);
+    const state = storeApi.getState();
+    if (!state.width || !state.height) return;
+    const minDim = Math.min(state.width, state.height);
+    const outerRadius = RADIUS.projectOuter + 140;
+    const fitAllZoom = minDim / (2 * outerRadius);
+    setMinZoom(Math.min(0.55, fitAllZoom));
+  }, [containerSize, storeApi]);
 
   // Toggle `will-change: transform` on the viewport via an `is-moving` class —
   // ONLY while the user is panning/zooming, removed 200ms after the last
@@ -1219,6 +1272,8 @@ function MindMapInner({ projects }: { projects: Project[] }) {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onNodeClick={handleNodeClick}
+          onNodeDragStart={handleNodeDragStart}
+          onNodeDragStop={handleNodeDragStop}
           onInit={focusViewport}
           onMoveStart={handleMoveStart}
           onMoveEnd={handleMoveEnd}
