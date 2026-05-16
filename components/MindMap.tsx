@@ -90,99 +90,8 @@ function hash2d(x: number, y: number): number {
   return s - Math.floor(s);
 }
 
-function NeonHalftoneHalo({
-  nodeWidth,
-  nodeHeight,
-}: {
-  nodeWidth: number;
-  nodeHeight: number;
-}) {
-  const width = nodeWidth + HALO_PAD * 2;
-  const height = nodeHeight + HALO_PAD * 2;
-  const cx = width / 2;
-  const cy = height / 2;
-  const halfW = nodeWidth / 2;
-  const halfH = nodeHeight / 2;
-
-  const circles: React.ReactNode[] = [];
-  for (let gy = HALO_GRID / 2; gy < height; gy += HALO_GRID) {
-    for (let gx = HALO_GRID / 2; gx < width; gx += HALO_GRID) {
-      // Distance from this dot to the node's rectangular boundary. Inside
-      // the node body distToNode is 0 → dots render at max size. The node
-      // body paints over them in the higher stacking layer, but because the
-      // pattern still EXISTS underneath, the visible halo flows seamlessly
-      // out from the box edges instead of leaving an empty band there.
-      const dx = Math.abs(gx - cx) - halfW;
-      const dy = Math.abs(gy - cy) - halfH;
-      const outsideX = Math.max(0, dx);
-      const outsideY = Math.max(0, dy);
-      const distToNode = Math.sqrt(outsideX * outsideX + outsideY * outsideY);
-
-      const t = Math.max(0, 1 - distToNode / HALO_RANGE);
-
-      // edgeFactor: 0 in the bright core (t ≥ HALO_NOISE_THRESHOLD), grows
-      // smoothly to 1 at the halo's outer edge (t → 0). All randomness is
-      // multiplied by this factor so the core stays a clean tight grid and
-      // only the falloff zone breaks up into organic noise.
-      const edgeFactor = Math.max(0, 1 - t / HALO_NOISE_THRESHOLD);
-
-      // Three deterministic noise streams per cell.
-      const nDrop = hash2d(gx + 53, gy + 7);
-      const nSize = hash2d(gx + 17, gy + 31);
-      const nX = hash2d(gx, gy);
-      const nY = hash2d(gx + 91, gy + 19);
-
-      // Dropout — only kicks in once we're past the noise threshold. Keep
-      // probability scales with t inside the edge zone so the dot field
-      // fades into emptiness rather than ending in a clean ring of tiny
-      // dots.
-      if (edgeFactor > 0 && nDrop > Math.min(1, t / HALO_NOISE_THRESHOLD)) {
-        continue;
-      }
-
-      // Size noise — symmetric ±HALO_SIZE_NOISE, scaled by edgeFactor.
-      const sizeNoiseAmt = HALO_SIZE_NOISE * edgeFactor;
-      const sizeMul = 1 - sizeNoiseAmt + nSize * (2 * sizeNoiseAmt);
-      const r = Math.pow(t, HALO_FALLOFF) * HALO_MAX_DOT * sizeMul;
-      if (r < 0.35) continue; // sub-pixel dots aren't worth drawing
-
-      // Position jitter — likewise scaled by edgeFactor so center dots stay
-      // locked to their cells.
-      const jitter = HALO_GRID * HALO_POS_JITTER * edgeFactor;
-      const px = gx + (nX * 2 - 1) * jitter;
-      const py = gy + (nY * 2 - 1) * jitter;
-
-      circles.push(
-        <circle
-          key={`${gx}-${gy}`}
-          cx={px}
-          cy={py}
-          r={r}
-          fill={HALO_NEON_COLOR}
-        />,
-      );
-    }
-  }
-
-  return (
-    <svg
-      aria-hidden
-      width={width}
-      height={height}
-      viewBox={`0 0 ${width} ${height}`}
-      style={{
-        position: "absolute",
-        left: -HALO_PAD,
-        top: -HALO_PAD,
-        pointerEvents: "none",
-        zIndex: -1,
-        display: "block",
-      }}
-    >
-      {circles}
-    </svg>
-  );
-}
+// (per-node NeonHalftoneHalo removed — HaloLayer now renders the full halo
+// field globally; see further down.)
 
 function ProjectNode({ data }: NodeProps) {
   const [hovered, setHovered] = useState(false);
@@ -388,11 +297,17 @@ const edgeTypes = {
 };
 
 // === Halo layer ==========================================================
-// Renders every project node's neon halftone halo into a sibling div that
-// lives inside .react-flow__viewport via portal. That div sits at z-index
-// -1 within the viewport stacking context, so the natural React Flow paint
-// order becomes: halo (back) → edges → nodes (front). Halos transform with
-// the viewport for free because they share the viewport's CSS transform.
+// One global halftone field rendered as a single SVG, portalled into
+// .react-flow__viewport at z-index -1. Render order ends up:
+//   halo field (back) → edges → nodes (front)
+//
+// Key shift from the per-node version: every project node contributes
+// intensity into a SHARED world-anchored grid (cell positions are functions
+// of world coords, not of any individual node). For each grid cell we take
+// the MAX intensity contributed by any nearby node. Overlapping halos blend
+// into one continuous denser cluster instead of two clashing grids — and
+// because the grid is locked to world space, dragging a node "uncovers"
+// dots at fixed world positions instead of carrying its own pattern around.
 
 function HaloLayer() {
   const domNode = useStore((s) => s.domNode);
@@ -402,15 +317,14 @@ function HaloLayer() {
   const viewport = domNode.querySelector<HTMLElement>(".react-flow__viewport");
   if (!viewport) return null;
 
-  type Item = { id: string; x: number; y: number; w: number; h: number };
-  const items: Item[] = [];
+  type NodeRect = { x: number; y: number; w: number; h: number };
+  const rects: NodeRect[] = [];
   nodeLookup.forEach((internalNode, id) => {
     if (!id.startsWith(PROJ_PREFIX)) return;
     const w = internalNode.measured?.width;
     const h = internalNode.measured?.height;
     if (!w || !h) return;
-    items.push({
-      id,
+    rects.push({
       x: internalNode.position.x,
       y: internalNode.position.y,
       w,
@@ -418,31 +332,123 @@ function HaloLayer() {
     });
   });
 
+  if (rects.length === 0) {
+    return createPortal(<div aria-hidden style={{ display: "none" }} />, viewport);
+  }
+
+  // Accumulate per-cell intensity. The key encodes the GLOBAL grid cell
+  // (cgx, cgy); cell centre in world coords is (cgx + 0.5) * HALO_GRID,
+  // (cgy + 0.5) * HALO_GRID. Grid origin is fixed at world (0, 0).
+  const intensity = new Map<string, number>();
+
+  let worldMinX = Infinity;
+  let worldMinY = Infinity;
+  let worldMaxX = -Infinity;
+  let worldMaxY = -Infinity;
+
+  for (const rect of rects) {
+    const cx = rect.x + rect.w / 2;
+    const cy = rect.y + rect.h / 2;
+    const halfW = rect.w / 2;
+    const halfH = rect.h / 2;
+
+    const haloMinX = rect.x - HALO_PAD;
+    const haloMinY = rect.y - HALO_PAD;
+    const haloMaxX = rect.x + rect.w + HALO_PAD;
+    const haloMaxY = rect.y + rect.h + HALO_PAD;
+
+    if (haloMinX < worldMinX) worldMinX = haloMinX;
+    if (haloMinY < worldMinY) worldMinY = haloMinY;
+    if (haloMaxX > worldMaxX) worldMaxX = haloMaxX;
+    if (haloMaxY > worldMaxY) worldMaxY = haloMaxY;
+
+    const cgxStart = Math.floor(haloMinX / HALO_GRID);
+    const cgxEnd = Math.ceil(haloMaxX / HALO_GRID);
+    const cgyStart = Math.floor(haloMinY / HALO_GRID);
+    const cgyEnd = Math.ceil(haloMaxY / HALO_GRID);
+
+    for (let cgy = cgyStart; cgy < cgyEnd; cgy += 1) {
+      const gy = (cgy + 0.5) * HALO_GRID;
+      for (let cgx = cgxStart; cgx < cgxEnd; cgx += 1) {
+        const gx = (cgx + 0.5) * HALO_GRID;
+        const dx = Math.abs(gx - cx) - halfW;
+        const dy = Math.abs(gy - cy) - halfH;
+        const outsideX = Math.max(0, dx);
+        const outsideY = Math.max(0, dy);
+        const dist = Math.sqrt(outsideX * outsideX + outsideY * outsideY);
+        if (dist > HALO_RANGE) continue;
+        const t = 1 - dist / HALO_RANGE;
+        const key = `${cgx},${cgy}`;
+        const prev = intensity.get(key);
+        if (prev === undefined || t > prev) intensity.set(key, t);
+      }
+    }
+  }
+
+  // SVG fits the union of all contributing cells, padded to grid alignment.
+  const svgX = Math.floor(worldMinX / HALO_GRID) * HALO_GRID;
+  const svgY = Math.floor(worldMinY / HALO_GRID) * HALO_GRID;
+  const svgW = Math.ceil((worldMaxX - svgX) / HALO_GRID) * HALO_GRID;
+  const svgH = Math.ceil((worldMaxY - svgY) / HALO_GRID) * HALO_GRID;
+
+  type DotSpec = { px: number; py: number; r: number; key: string };
+  const dots: DotSpec[] = [];
+
+  intensity.forEach((t, key) => {
+    const [cgxStr, cgyStr] = key.split(",");
+    const cgx = Number(cgxStr);
+    const cgy = Number(cgyStr);
+    const gx = (cgx + 0.5) * HALO_GRID;
+    const gy = (cgy + 0.5) * HALO_GRID;
+
+    const edgeFactor = Math.max(0, 1 - t / HALO_NOISE_THRESHOLD);
+
+    const nDrop = hash2d(gx + 53, gy + 7);
+    const nSize = hash2d(gx + 17, gy + 31);
+    const nX = hash2d(gx, gy);
+    const nY = hash2d(gx + 91, gy + 19);
+
+    if (edgeFactor > 0 && nDrop > Math.min(1, t / HALO_NOISE_THRESHOLD)) {
+      return;
+    }
+
+    const sizeNoiseAmt = HALO_SIZE_NOISE * edgeFactor;
+    const sizeMul = 1 - sizeNoiseAmt + nSize * (2 * sizeNoiseAmt);
+    const r = Math.pow(t, HALO_FALLOFF) * HALO_MAX_DOT * sizeMul;
+    if (r < 0.35) return;
+
+    const jitter = HALO_GRID * HALO_POS_JITTER * edgeFactor;
+    const px = gx + (nX * 2 - 1) * jitter;
+    const py = gy + (nY * 2 - 1) * jitter;
+
+    dots.push({ px, py, r, key });
+  });
+
   return createPortal(
-    <div
+    <svg
       aria-hidden
+      width={svgW}
+      height={svgH}
+      viewBox={`0 0 ${svgW} ${svgH}`}
       style={{
         position: "absolute",
-        inset: 0,
+        left: svgX,
+        top: svgY,
         pointerEvents: "none",
         zIndex: -1,
+        display: "block",
       }}
     >
-      {items.map((it) => (
-        <div
-          key={it.id}
-          style={{
-            position: "absolute",
-            left: it.x,
-            top: it.y,
-            width: it.w,
-            height: it.h,
-          }}
-        >
-          <NeonHalftoneHalo nodeWidth={it.w} nodeHeight={it.h} />
-        </div>
+      {dots.map((d) => (
+        <circle
+          key={d.key}
+          cx={d.px - svgX}
+          cy={d.py - svgY}
+          r={d.r}
+          fill={HALO_NEON_COLOR}
+        />
       ))}
-    </div>,
+    </svg>,
     viewport,
   );
 }
