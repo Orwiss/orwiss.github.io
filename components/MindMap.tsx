@@ -311,143 +311,178 @@ const edgeTypes = {
 
 function HaloLayer() {
   const domNode = useStore((s) => s.domNode);
+
+  // Hook into store updates VIA a derived-string selector — React Flow
+  // mutates nodeLookup in place when nodes drag, so subscribing to the Map
+  // reference alone never re-renders. The selector body runs on every store
+  // tick; we return a fingerprint of project-node geometry (positions +
+  // sizes bucketed to 0.5px). Whenever the string differs from last tick,
+  // useStore triggers a re-render. Selection / viewport / other unrelated
+  // store changes leave the fingerprint identical → no re-render.
+  const positionsKey = useStore((s) => {
+    const parts: string[] = [];
+    s.nodeLookup.forEach((node, id) => {
+      if (!id.startsWith(PROJ_PREFIX)) return;
+      const w = node.measured?.width;
+      const h = node.measured?.height;
+      if (!w || !h) return;
+      parts.push(
+        `${id}:${Math.round(node.position.x * 2)},${Math.round(node.position.y * 2)},${Math.round(w * 2)},${Math.round(h * 2)}`,
+      );
+    });
+    return parts.sort().join("|");
+  });
+
+  // Direct access to the live Map for the heavy work below.
   const nodeLookup = useStore((s) => s.nodeLookup);
+
+  // Heavy work — grid intensity accumulation + path string assembly — gated
+  // by signature. All ~3000 dots are baked into a SINGLE SVG <path> with
+  // multi-subpath `d`; one DOM node instead of thousands cuts React
+  // reconciliation and browser paint dramatically while preserving full
+  // vector fidelity (so canvas zoom stays crisp).
+  const halo = useMemo(() => {
+    type Rect = { x: number; y: number; w: number; h: number };
+    const rects: Rect[] = [];
+    nodeLookup.forEach((node, id) => {
+      if (!id.startsWith(PROJ_PREFIX)) return;
+      const w = node.measured?.width;
+      const h = node.measured?.height;
+      if (!w || !h) return;
+      rects.push({ x: node.position.x, y: node.position.y, w, h });
+    });
+    if (rects.length === 0) return null;
+
+    const intensity = new Map<string, number>();
+    let worldMinX = Infinity;
+    let worldMinY = Infinity;
+    let worldMaxX = -Infinity;
+    let worldMaxY = -Infinity;
+
+    for (const rect of rects) {
+      const cx = rect.x + rect.w / 2;
+      const cy = rect.y + rect.h / 2;
+      const halfW = rect.w / 2;
+      const halfH = rect.h / 2;
+
+      const haloMinX = rect.x - HALO_PAD;
+      const haloMinY = rect.y - HALO_PAD;
+      const haloMaxX = rect.x + rect.w + HALO_PAD;
+      const haloMaxY = rect.y + rect.h + HALO_PAD;
+
+      if (haloMinX < worldMinX) worldMinX = haloMinX;
+      if (haloMinY < worldMinY) worldMinY = haloMinY;
+      if (haloMaxX > worldMaxX) worldMaxX = haloMaxX;
+      if (haloMaxY > worldMaxY) worldMaxY = haloMaxY;
+
+      const cgxStart = Math.floor(haloMinX / HALO_GRID);
+      const cgxEnd = Math.ceil(haloMaxX / HALO_GRID);
+      const cgyStart = Math.floor(haloMinY / HALO_GRID);
+      const cgyEnd = Math.ceil(haloMaxY / HALO_GRID);
+
+      for (let cgy = cgyStart; cgy < cgyEnd; cgy += 1) {
+        const gy = (cgy + 0.5) * HALO_GRID;
+        for (let cgx = cgxStart; cgx < cgxEnd; cgx += 1) {
+          const gx = (cgx + 0.5) * HALO_GRID;
+          const dx = Math.abs(gx - cx) - halfW;
+          const dy = Math.abs(gy - cy) - halfH;
+          const outsideX = Math.max(0, dx);
+          const outsideY = Math.max(0, dy);
+          const dist = Math.sqrt(outsideX * outsideX + outsideY * outsideY);
+          if (dist > HALO_RANGE) continue;
+          const t = 1 - dist / HALO_RANGE;
+          const key = `${cgx},${cgy}`;
+          const prev = intensity.get(key);
+          if (prev === undefined || t > prev) intensity.set(key, t);
+        }
+      }
+    }
+
+    const svgX = Math.floor(worldMinX / HALO_GRID) * HALO_GRID;
+    const svgY = Math.floor(worldMinY / HALO_GRID) * HALO_GRID;
+    const svgW = Math.ceil((worldMaxX - svgX) / HALO_GRID) * HALO_GRID;
+    const svgH = Math.ceil((worldMaxY - svgY) / HALO_GRID) * HALO_GRID;
+
+    // Build one big path `d` string instead of thousands of <circle>s. Each
+    // dot is encoded as a M + two relative arc commands — a self-contained
+    // subpath that draws a full circle. Concatenated subpaths render as
+    // independent shapes inside one <path>.
+    const segments: string[] = [];
+    intensity.forEach((t, key) => {
+      const commaIdx = key.indexOf(",");
+      const cgx = Number(key.slice(0, commaIdx));
+      const cgy = Number(key.slice(commaIdx + 1));
+      const gx = (cgx + 0.5) * HALO_GRID;
+      const gy = (cgy + 0.5) * HALO_GRID;
+
+      const edgeFactor = Math.max(0, 1 - t / HALO_NOISE_THRESHOLD);
+
+      const nDrop = hash2d(gx + 53, gy + 7);
+      const nSize = hash2d(gx + 17, gy + 31);
+      const nX = hash2d(gx, gy);
+      const nY = hash2d(gx + 91, gy + 19);
+
+      if (edgeFactor > 0 && nDrop > Math.min(1, t / HALO_NOISE_THRESHOLD)) {
+        return;
+      }
+
+      const sizeNoiseAmt = HALO_SIZE_NOISE * edgeFactor;
+      const sizeMul = 1 - sizeNoiseAmt + nSize * (2 * sizeNoiseAmt);
+      const r = Math.pow(t, HALO_FALLOFF) * HALO_MAX_DOT * sizeMul;
+      if (r < 0.35) return;
+
+      const jitter = HALO_GRID * HALO_POS_JITTER * edgeFactor;
+      const px = gx + (nX * 2 - 1) * jitter;
+      const py = gy + (nY * 2 - 1) * jitter;
+
+      // Truncate to 2 decimals — sub-pixel precision below that is invisible
+      // and keeps the path string shorter / faster to parse.
+      const cxStr = (px - svgX).toFixed(2);
+      const cyStr = (py - svgY).toFixed(2);
+      const rStr = r.toFixed(2);
+      const dStr = (r * 2).toFixed(2);
+      // Whitespace-safe subpath: a full circle drawn as two semicircular arcs.
+      // Spaces between every token avoid any parser ambiguity at digit/letter
+      // transitions (some Chromium versions are finicky about `0a`-style
+      // contiguous tokens in multi-subpath strings).
+      segments.push(
+        `M ${cxStr} ${cyStr} m -${rStr} 0 a ${rStr} ${rStr} 0 1 0 ${dStr} 0 a ${rStr} ${rStr} 0 1 0 -${dStr} 0`,
+      );
+    });
+
+    return {
+      svgX,
+      svgY,
+      svgW,
+      svgH,
+      d: segments.join(" "),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [positionsKey]);
 
   if (!domNode) return null;
   const viewport = domNode.querySelector<HTMLElement>(".react-flow__viewport");
   if (!viewport) return null;
-
-  type NodeRect = { x: number; y: number; w: number; h: number };
-  const rects: NodeRect[] = [];
-  nodeLookup.forEach((internalNode, id) => {
-    if (!id.startsWith(PROJ_PREFIX)) return;
-    const w = internalNode.measured?.width;
-    const h = internalNode.measured?.height;
-    if (!w || !h) return;
-    rects.push({
-      x: internalNode.position.x,
-      y: internalNode.position.y,
-      w,
-      h,
-    });
-  });
-
-  if (rects.length === 0) {
+  if (!halo) {
     return createPortal(<div aria-hidden style={{ display: "none" }} />, viewport);
   }
-
-  // Accumulate per-cell intensity. The key encodes the GLOBAL grid cell
-  // (cgx, cgy); cell centre in world coords is (cgx + 0.5) * HALO_GRID,
-  // (cgy + 0.5) * HALO_GRID. Grid origin is fixed at world (0, 0).
-  const intensity = new Map<string, number>();
-
-  let worldMinX = Infinity;
-  let worldMinY = Infinity;
-  let worldMaxX = -Infinity;
-  let worldMaxY = -Infinity;
-
-  for (const rect of rects) {
-    const cx = rect.x + rect.w / 2;
-    const cy = rect.y + rect.h / 2;
-    const halfW = rect.w / 2;
-    const halfH = rect.h / 2;
-
-    const haloMinX = rect.x - HALO_PAD;
-    const haloMinY = rect.y - HALO_PAD;
-    const haloMaxX = rect.x + rect.w + HALO_PAD;
-    const haloMaxY = rect.y + rect.h + HALO_PAD;
-
-    if (haloMinX < worldMinX) worldMinX = haloMinX;
-    if (haloMinY < worldMinY) worldMinY = haloMinY;
-    if (haloMaxX > worldMaxX) worldMaxX = haloMaxX;
-    if (haloMaxY > worldMaxY) worldMaxY = haloMaxY;
-
-    const cgxStart = Math.floor(haloMinX / HALO_GRID);
-    const cgxEnd = Math.ceil(haloMaxX / HALO_GRID);
-    const cgyStart = Math.floor(haloMinY / HALO_GRID);
-    const cgyEnd = Math.ceil(haloMaxY / HALO_GRID);
-
-    for (let cgy = cgyStart; cgy < cgyEnd; cgy += 1) {
-      const gy = (cgy + 0.5) * HALO_GRID;
-      for (let cgx = cgxStart; cgx < cgxEnd; cgx += 1) {
-        const gx = (cgx + 0.5) * HALO_GRID;
-        const dx = Math.abs(gx - cx) - halfW;
-        const dy = Math.abs(gy - cy) - halfH;
-        const outsideX = Math.max(0, dx);
-        const outsideY = Math.max(0, dy);
-        const dist = Math.sqrt(outsideX * outsideX + outsideY * outsideY);
-        if (dist > HALO_RANGE) continue;
-        const t = 1 - dist / HALO_RANGE;
-        const key = `${cgx},${cgy}`;
-        const prev = intensity.get(key);
-        if (prev === undefined || t > prev) intensity.set(key, t);
-      }
-    }
-  }
-
-  // SVG fits the union of all contributing cells, padded to grid alignment.
-  const svgX = Math.floor(worldMinX / HALO_GRID) * HALO_GRID;
-  const svgY = Math.floor(worldMinY / HALO_GRID) * HALO_GRID;
-  const svgW = Math.ceil((worldMaxX - svgX) / HALO_GRID) * HALO_GRID;
-  const svgH = Math.ceil((worldMaxY - svgY) / HALO_GRID) * HALO_GRID;
-
-  type DotSpec = { px: number; py: number; r: number; key: string };
-  const dots: DotSpec[] = [];
-
-  intensity.forEach((t, key) => {
-    const [cgxStr, cgyStr] = key.split(",");
-    const cgx = Number(cgxStr);
-    const cgy = Number(cgyStr);
-    const gx = (cgx + 0.5) * HALO_GRID;
-    const gy = (cgy + 0.5) * HALO_GRID;
-
-    const edgeFactor = Math.max(0, 1 - t / HALO_NOISE_THRESHOLD);
-
-    const nDrop = hash2d(gx + 53, gy + 7);
-    const nSize = hash2d(gx + 17, gy + 31);
-    const nX = hash2d(gx, gy);
-    const nY = hash2d(gx + 91, gy + 19);
-
-    if (edgeFactor > 0 && nDrop > Math.min(1, t / HALO_NOISE_THRESHOLD)) {
-      return;
-    }
-
-    const sizeNoiseAmt = HALO_SIZE_NOISE * edgeFactor;
-    const sizeMul = 1 - sizeNoiseAmt + nSize * (2 * sizeNoiseAmt);
-    const r = Math.pow(t, HALO_FALLOFF) * HALO_MAX_DOT * sizeMul;
-    if (r < 0.35) return;
-
-    const jitter = HALO_GRID * HALO_POS_JITTER * edgeFactor;
-    const px = gx + (nX * 2 - 1) * jitter;
-    const py = gy + (nY * 2 - 1) * jitter;
-
-    dots.push({ px, py, r, key });
-  });
 
   return createPortal(
     <svg
       aria-hidden
-      width={svgW}
-      height={svgH}
-      viewBox={`0 0 ${svgW} ${svgH}`}
+      width={halo.svgW}
+      height={halo.svgH}
+      viewBox={`0 0 ${halo.svgW} ${halo.svgH}`}
       style={{
         position: "absolute",
-        left: svgX,
-        top: svgY,
+        left: halo.svgX,
+        top: halo.svgY,
         pointerEvents: "none",
         zIndex: -1,
         display: "block",
       }}
     >
-      {dots.map((d) => (
-        <circle
-          key={d.key}
-          cx={d.px - svgX}
-          cy={d.py - svgY}
-          r={d.r}
-          fill={HALO_NEON_COLOR}
-        />
-      ))}
+      <path d={halo.d} fill={HALO_NEON_COLOR} />
     </svg>,
     viewport,
   );
