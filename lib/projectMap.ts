@@ -3,6 +3,8 @@ import {
   type ProjectPage,
   getProjectTitle,
   getProjectCategories,
+  getProjectDateValue,
+  getProjectTools,
 } from "@/lib/projectNotion";
 
 function normalize(label: string): string {
@@ -20,16 +22,20 @@ export function matchCategoryId(notionCategoryName: string): CategoryId | null {
 
 export function mapNotionToProjects(pages: ProjectPage[]): Project[] {
   return pages.map((page) => {
-    const tags = getProjectCategories(page);
-    const matchedId = tags
+    const cats = getProjectCategories(page);
+    const matchedId = cats
       .map((t) => matchCategoryId(t.name))
       .find((id): id is CategoryId => id !== null);
+    const date = getProjectDateValue(page);
+    const tools = getProjectTools(page);
     return {
       id: page.id,
       title: getProjectTitle(page),
       // Projects that have no recognised category fall through to "others"
       // so they still show up on the mind map.
       categoryId: matchedId ?? "others",
+      year: date ? date.slice(0, 4) : null,
+      tags: tools.map((t) => t.name),
     };
   });
 }

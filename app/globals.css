@@ -85,9 +85,12 @@ body {
 }
 
 /* === Mind map project-node neon halo ===================================
-   The halftone dot ring is rendered in JSX via SVG (components/MindMap.tsx
-   → NeonHalftoneHalo) so dot radius can vary with distance from the node
-   edge — proper halftone where dots shrink as the field weakens, instead
-   of a uniform pattern that gets clipped by a CSS mask.
-   The soft blurred underglow stays as a sibling absolutely-positioned div
-   inside the project node. Both live behind the node body via z-index. */
+   Halftone field is composed in MindMap.tsx → HaloLayer. The breathing
+   "area glow" per project node is driven entirely from JS: each node has
+   its own time-varying `reach` (sin-modulated, stable phase/freq per id)
+   that feeds into the global intensity field. The same halftone rules
+   (distance falloff, edge noise, jitter, size gating) then operate on
+   the resulting per-cell intensity — so as `reach` grows, new dots
+   genuinely emerge at the edge at small radii and grow into the field,
+   and as it shrinks they shrink back to zero. No masks, no opacity
+   tricks — the field itself breathes. */

@@ -57,9 +57,22 @@ function ProjectRow({ project }: { project: Project }) {
             </div>
           )}
         </div>
-        <span className="text-lg font-medium leading-snug break-keep">
-          {project.title}
-        </span>
+        <div className="flex-1 min-w-0">
+          <div className="text-lg font-medium leading-snug break-keep">
+            {project.title}
+          </div>
+          {(project.year || project.tags.length > 0) && (
+            <div className="mt-1 text-xs opacity-60 flex flex-wrap gap-x-2 gap-y-0.5">
+              {project.year ? <span>{project.year}</span> : null}
+              {project.year && project.tags.length > 0 ? (
+                <span aria-hidden>·</span>
+              ) : null}
+              {project.tags.length > 0 ? (
+                <span className="truncate">{project.tags.join(" / ")}</span>
+              ) : null}
+            </div>
+          )}
+        </div>
       </Link>
     </li>
   );

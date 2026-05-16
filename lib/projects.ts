@@ -16,6 +16,8 @@ export type Project = {
   id: string;
   title: string;
   categoryId: CategoryId;
+  year: string | null;
+  tags: string[];
 };
 
 export const HUB_LABEL = "Sunghun Park";

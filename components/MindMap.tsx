@@ -13,6 +13,7 @@ import {
   useEdgesState,
   useReactFlow,
   useStore,
+  useStoreApi,
   type Node,
   type Edge,
   type NodeProps,
@@ -31,9 +32,9 @@ const CAT_PREFIX = "cat:";
 const PROJ_PREFIX = "proj:";
 
 const RADIUS = {
-  category: 380,
-  projectInner: 720,
-  projectOuter: 1080,
+  category: 440,
+  projectInner: 840,
+  projectOuter: 1240,
 } as const;
 
 const CATEGORY_WEIGHT_PAD = 3;
@@ -42,7 +43,7 @@ const CATEGORY_WEIGHT_PAD = 3;
 
 function HubNode({ data }: NodeProps) {
   return (
-    <div className="bg-black text-white px-7 py-3.5 text-3xl whitespace-nowrap tracking-tight">
+    <div className="bg-black text-white px-9 py-4 text-4xl whitespace-nowrap tracking-tight">
       {String(data.label)}
       <HiddenHandles />
     </div>
@@ -51,7 +52,7 @@ function HubNode({ data }: NodeProps) {
 
 function CategoryNode({ data }: NodeProps) {
   return (
-    <div className="bg-[#DDD] border rounded-full border-black px-5 py-2.5 text-xl whitespace-nowrap">
+    <div className="bg-[#DDD] border rounded-full border-black px-7 py-3 text-2xl whitespace-nowrap">
       {String(data.label)}
       <HiddenHandles />
     </div>
@@ -73,21 +74,54 @@ const VIEWPORT_MARGIN = 12;
 // toward zero at the halo's outer reach. Dots are full circles — never
 // clipped — which is the defining property a CSS mask can't give us.
 const HALO_NEON_COLOR = "#39ff14";
-const HALO_PAD = 130;          // px the halo extends past each node edge
-const HALO_GRID = 10;          // px between dot centres
-const HALO_RANGE = HALO_PAD;   // px over which dot radius decays to zero
-const HALO_MAX_DOT = HALO_GRID / 2; // largest dot radius (touches neighbours at peak)
+const HALO_PAD = 220;          // SCREEN-px BASE reach (range over which dot radius decays to zero)
+                               // — modulated per node by HALO_AMP, see geometry below.
+                               // Kept in screen px so the visible halo area stays
+                               // constant across zoom AND the cell-count stays
+                               // bounded (canvas-px reach scales 1/zoom alongside
+                               // grid spacing, leaving cells-per-node invariant).
+const HALO_GRID = 11;          // SCREEN-px between dot centres (constant across zoom)
+const HALO_MAX_DOT = HALO_GRID / 2; // largest dot radius in SCREEN px
 const HALO_FALLOFF = 1.7;      // exponent controlling how steeply dots shrink
 const HALO_POS_JITTER = 0.35;  // ± fraction of HALO_GRID a dot can wander off its cell (at edge)
 const HALO_SIZE_NOISE = 0.55;  // ± fraction by which per-cell noise modulates dot radius (at edge)
 const HALO_NOISE_THRESHOLD = 0.55; // t value above which the core stays perfectly regular
                                    // (lower = more area kept clean; higher = noise reaches inward)
 
+// Per-node area-glow oscillation. Each project node gets `reach(t) =
+// HALO_PAD * (1 + HALO_AMP * sin(t * freq + phase))`. Phase + freq are
+// derived from hashString(id) so each node breathes on its own clock and
+// nodes drift in and out of sync. The whole intensity field is recomputed
+// every animation tick — there is no masking; new dots emerge at the edge
+// at small radii as reach grows, then shrink as reach retracts. The
+// halftone rules (falloff, edge noise, jitter, size gating) all operate
+// on the resulting per-cell intensity, so they stay intact.
+const HALO_AMP = 0.32;             // ±32% modulation of HALO_PAD per node
+const HALO_MAX_MUL = 1 + HALO_AMP; // used for sizing the SVG viewBox so the
+                                   // outermost breathing frame never clips
+const HALO_FREQ_MIN = 0.18;        // Hz — slowest breathing cycle (~5.5s)
+const HALO_FREQ_MAX = 0.42;        // Hz — fastest breathing cycle (~2.4s)
+// Render cap. Frame budget for the per-tick path build below — we still
+// regenerate the field every frame, but skip frames if we're consistently
+// running over budget (set via PROFILE_HALO=true to log).
+const HALO_TARGET_FPS = 30;
+
 // Deterministic 2D hash → [0, 1). Cheap, stable per (x, y) cell so the
 // pattern doesn't shimmer between renders / drags / zooms.
 function hash2d(x: number, y: number): number {
   const s = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
   return s - Math.floor(s);
+}
+
+// Deterministic string hash → [0, 1). Used to assign each project node a
+// stable, unique phase + period for its glow animation.
+function hashString(str: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i += 1) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) / 0xffffffff;
 }
 
 // (per-node NeonHalftoneHalo removed — HaloLayer now renders the full halo
@@ -144,7 +178,7 @@ function ProjectNode({ data }: NodeProps) {
       ref={ref}
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
-      className="relative bg-white border border-black px-4 py-2 text-lg whitespace-nowrap cursor-pointer transition-colors hover:bg-black hover:text-white"
+      className="relative bg-white border border-black px-5 py-2.5 text-xl whitespace-nowrap cursor-pointer transition-colors hover:bg-black hover:text-white"
     >
       {label}
       <HiddenHandles />
@@ -312,13 +346,9 @@ const edgeTypes = {
 function HaloLayer() {
   const domNode = useStore((s) => s.domNode);
 
-  // Hook into store updates VIA a derived-string selector — React Flow
-  // mutates nodeLookup in place when nodes drag, so subscribing to the Map
-  // reference alone never re-renders. The selector body runs on every store
-  // tick; we return a fingerprint of project-node geometry (positions +
-  // sizes bucketed to 0.5px). Whenever the string differs from last tick,
-  // useStore triggers a re-render. Selection / viewport / other unrelated
-  // store changes leave the fingerprint identical → no re-render.
+  // Position fingerprint — see comment above. React Flow mutates the
+  // nodeLookup Map in place, so we must derive a string that changes
+  // when geometry changes (and only then).
   const positionsKey = useStore((s) => {
     const parts: string[] = [];
     s.nodeLookup.forEach((node, id) => {
@@ -333,156 +363,272 @@ function HaloLayer() {
     return parts.sort().join("|");
   });
 
-  // Direct access to the live Map for the heavy work below.
   const nodeLookup = useStore((s) => s.nodeLookup);
+  // Subscribe to a bucketed zoom (0.2 steps) instead of the raw zoom value.
+  // Smooth zoom tweens (+/- buttons, wheel) fire many small zoom deltas; if
+  // we subscribed to raw zoom every one of them re-rendered HaloLayer, which
+  // tore through a fresh path-string + DOM diff each step. Bucketing means
+  // React only re-renders on bucket boundary crossings (~3 per zoom gesture)
+  // while the per-frame RAF tick keeps the dot sizes/positions current via
+  // the live zoom read inside `pathD` below.
+  const zoomBucket = useStore((s) =>
+    Math.max(0.001, Math.round(s.transform[2] * 5) / 5),
+  );
+  // Store handle for the cull pass + live zoom read below — we read transform
+  // + zoom + container dimensions inside the per-frame animation pass
+  // without subscribing, so pan and fractional zoom events don't trigger
+  // extra re-renders. The RAF tick already drives recomputation; these
+  // reads just pull the latest values when it runs.
+  const storeApi = useStoreApi();
 
-  // Heavy work — grid intensity accumulation + path string assembly — gated
-  // by signature. All ~3000 dots are baked into a SINGLE SVG <path> with
-  // multi-subpath `d`; one DOM node instead of thousands cuts React
-  // reconciliation and browser paint dramatically while preserving full
-  // vector fidelity (so canvas zoom stays crisp).
-  const halo = useMemo(() => {
-    type Rect = { x: number; y: number; w: number; h: number };
+  // RAF tick — drives the per-node area-glow oscillation. We tick a
+  // monotonically-increasing seconds value, throttled to ~HALO_TARGET_FPS
+  // so the per-frame field rebuild stays bounded. Pause when the tab is
+  // hidden (no point animating into a black screen).
+  const [tickSec, setTickSec] = useState(0);
+  useEffect(() => {
+    let raf = 0;
+    let lastEmit = -Infinity;
+    const minDelta = 1000 / HALO_TARGET_FPS;
+    const loop = (now: number) => {
+      if (now - lastEmit >= minDelta) {
+        lastEmit = now;
+        setTickSec(now / 1000);
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    const onVisible = () => {
+      if (document.hidden) cancelAnimationFrame(raf);
+      else raf = requestAnimationFrame(loop);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelAnimationFrame(raf);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
+
+  // === Geometry pass (cached) ===========================================
+  // For each cell that any node's MAX-reach halo could possibly touch,
+  // record per-node distance. Recomputed only when node positions change
+  // or we cross a zoom bucket. Per-tick animation work below reuses this
+  // distance table.
+  const geometry = useMemo(() => {
+    type Rect = {
+      id: string;
+      cx: number;
+      cy: number;
+      halfW: number;
+      halfH: number;
+      freq: number; // rad/s
+      phase: number; // rad
+    };
     const rects: Rect[] = [];
     nodeLookup.forEach((node, id) => {
       if (!id.startsWith(PROJ_PREFIX)) return;
       const w = node.measured?.width;
       const h = node.measured?.height;
       if (!w || !h) return;
-      rects.push({ x: node.position.x, y: node.position.y, w, h });
+      const h01 = hashString(id);
+      const freqHz = HALO_FREQ_MIN + h01 * (HALO_FREQ_MAX - HALO_FREQ_MIN);
+      rects.push({
+        id,
+        cx: node.position.x + w / 2,
+        cy: node.position.y + h / 2,
+        halfW: w / 2,
+        halfH: h / 2,
+        freq: 2 * Math.PI * freqHz,
+        phase: h01 * 2 * Math.PI,
+      });
     });
     if (rects.length === 0) return null;
 
-    const intensity = new Map<string, number>();
+    const gridCanvas = HALO_GRID / zoomBucket;
+    const padCanvas = HALO_PAD / zoomBucket;
+    const maxReach = padCanvas * HALO_MAX_MUL;
+
+    // Cell record: position in canvas px + flat per-rect distance list.
+    // Using parallel arrays (rectIdx, dist) keeps the per-tick loop
+    // tight and GC-quiet.
+    type Cell = {
+      gx: number;
+      gy: number;
+      rectIdx: Uint16Array;
+      dist: Float32Array;
+    };
+    const tmpIdx: number[] = [];
+    const tmpDist: number[] = [];
+    const cells: Cell[] = [];
+
     let worldMinX = Infinity;
     let worldMinY = Infinity;
     let worldMaxX = -Infinity;
     let worldMaxY = -Infinity;
+    for (const r of rects) {
+      worldMinX = Math.min(worldMinX, r.cx - r.halfW - maxReach);
+      worldMinY = Math.min(worldMinY, r.cy - r.halfH - maxReach);
+      worldMaxX = Math.max(worldMaxX, r.cx + r.halfW + maxReach);
+      worldMaxY = Math.max(worldMaxY, r.cy + r.halfH + maxReach);
+    }
 
-    for (const rect of rects) {
-      const cx = rect.x + rect.w / 2;
-      const cy = rect.y + rect.h / 2;
-      const halfW = rect.w / 2;
-      const halfH = rect.h / 2;
+    const cgxMin = Math.floor(worldMinX / gridCanvas);
+    const cgxMax = Math.ceil(worldMaxX / gridCanvas);
+    const cgyMin = Math.floor(worldMinY / gridCanvas);
+    const cgyMax = Math.ceil(worldMaxY / gridCanvas);
 
-      const haloMinX = rect.x - HALO_PAD;
-      const haloMinY = rect.y - HALO_PAD;
-      const haloMaxX = rect.x + rect.w + HALO_PAD;
-      const haloMaxY = rect.y + rect.h + HALO_PAD;
-
-      if (haloMinX < worldMinX) worldMinX = haloMinX;
-      if (haloMinY < worldMinY) worldMinY = haloMinY;
-      if (haloMaxX > worldMaxX) worldMaxX = haloMaxX;
-      if (haloMaxY > worldMaxY) worldMaxY = haloMaxY;
-
-      const cgxStart = Math.floor(haloMinX / HALO_GRID);
-      const cgxEnd = Math.ceil(haloMaxX / HALO_GRID);
-      const cgyStart = Math.floor(haloMinY / HALO_GRID);
-      const cgyEnd = Math.ceil(haloMaxY / HALO_GRID);
-
-      for (let cgy = cgyStart; cgy < cgyEnd; cgy += 1) {
-        const gy = (cgy + 0.5) * HALO_GRID;
-        for (let cgx = cgxStart; cgx < cgxEnd; cgx += 1) {
-          const gx = (cgx + 0.5) * HALO_GRID;
-          const dx = Math.abs(gx - cx) - halfW;
-          const dy = Math.abs(gy - cy) - halfH;
-          const outsideX = Math.max(0, dx);
-          const outsideY = Math.max(0, dy);
-          const dist = Math.sqrt(outsideX * outsideX + outsideY * outsideY);
-          if (dist > HALO_RANGE) continue;
-          const t = 1 - dist / HALO_RANGE;
-          const key = `${cgx},${cgy}`;
-          const prev = intensity.get(key);
-          if (prev === undefined || t > prev) intensity.set(key, t);
+    for (let cgy = cgyMin; cgy < cgyMax; cgy += 1) {
+      const gy = (cgy + 0.5) * gridCanvas;
+      for (let cgx = cgxMin; cgx < cgxMax; cgx += 1) {
+        const gx = (cgx + 0.5) * gridCanvas;
+        tmpIdx.length = 0;
+        tmpDist.length = 0;
+        for (let i = 0; i < rects.length; i += 1) {
+          const r = rects[i];
+          const dx = Math.abs(gx - r.cx) - r.halfW;
+          const dy = Math.abs(gy - r.cy) - r.halfH;
+          const ox = dx > 0 ? dx : 0;
+          const oy = dy > 0 ? dy : 0;
+          const d = Math.sqrt(ox * ox + oy * oy);
+          if (d > maxReach) continue;
+          tmpIdx.push(i);
+          tmpDist.push(d);
         }
+        if (tmpIdx.length === 0) continue;
+        cells.push({
+          gx,
+          gy,
+          rectIdx: Uint16Array.from(tmpIdx),
+          dist: Float32Array.from(tmpDist),
+        });
       }
     }
 
-    const svgX = Math.floor(worldMinX / HALO_GRID) * HALO_GRID;
-    const svgY = Math.floor(worldMinY / HALO_GRID) * HALO_GRID;
-    const svgW = Math.ceil((worldMaxX - svgX) / HALO_GRID) * HALO_GRID;
-    const svgH = Math.ceil((worldMaxY - svgY) / HALO_GRID) * HALO_GRID;
+    const svgX = Math.floor(worldMinX / gridCanvas) * gridCanvas;
+    const svgY = Math.floor(worldMinY / gridCanvas) * gridCanvas;
+    const svgW = Math.ceil((worldMaxX - svgX) / gridCanvas) * gridCanvas;
+    const svgH = Math.ceil((worldMaxY - svgY) / gridCanvas) * gridCanvas;
 
-    // Build one big path `d` string instead of thousands of <circle>s. Each
-    // dot is encoded as a M + two relative arc commands — a self-contained
-    // subpath that draws a full circle. Concatenated subpaths render as
-    // independent shapes inside one <path>.
+    return { rects, cells, svgX, svgY, svgW, svgH, gridCanvas, padCanvas };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [positionsKey, zoomBucket]);
+
+  // === Animation pass (per RAF tick) =====================================
+  // Cheap: walk cached cells, compute per-cell t from currently-modulated
+  // per-node reach, apply halftone rules, emit one <path d=...>.
+  const pathD = useMemo(() => {
+    if (!geometry) return "";
+    const { rects, cells, svgX, svgY, padCanvas } = geometry;
+
+    // Read live transform + viewport size once for the whole pass. We
+    // don't SUBSCRIBE to transform — the RAF tick already drives this
+    // useMemo via `tickSec`, and avoiding the subscription means pan +
+    // sub-bucket zoom events don't kick off extra React re-renders /
+    // path-string rebuilds.
+    const { transform, width: vpW, height: vpH } = storeApi.getState();
+    const tx = transform[0];
+    const ty = transform[1];
+    const safeZoom = Math.max(0.001, transform[2]);
+
+    // Viewport cull bounds in canvas coords. Generous margin = max dot
+    // radius + max jitter so a cell whose CENTER sits just past the
+    // viewport edge but whose dot still paints across it doesn't pop out.
+    const cullMarginCanvas =
+      (HALO_MAX_DOT + HALO_GRID * HALO_POS_JITTER + 2) / safeZoom;
+    const viewMinX = -tx / safeZoom - cullMarginCanvas;
+    const viewMaxX = (vpW - tx) / safeZoom + cullMarginCanvas;
+    const viewMinY = -ty / safeZoom - cullMarginCanvas;
+    const viewMaxY = (vpH - ty) / safeZoom + cullMarginCanvas;
+
+    // Per-node reach for THIS tick, in canvas px. padCanvas already
+    // incorporates the zoom bucket (HALO_PAD screen-px / zoomBucket),
+    // so visible halo radius stays roughly constant across zoom while
+    // cell-count per node stays bounded.
+    const reach = new Float32Array(rects.length);
+    for (let i = 0; i < rects.length; i += 1) {
+      const r = rects[i];
+      reach[i] = padCanvas * (1 + HALO_AMP * Math.sin(tickSec * r.freq + r.phase));
+    }
+
     const segments: string[] = [];
-    intensity.forEach((t, key) => {
-      const commaIdx = key.indexOf(",");
-      const cgx = Number(key.slice(0, commaIdx));
-      const cgy = Number(key.slice(commaIdx + 1));
-      const gx = (cgx + 0.5) * HALO_GRID;
-      const gy = (cgy + 0.5) * HALO_GRID;
+    for (const cell of cells) {
+      // Cheap rejection FIRST — skips ~50%+ of cells when zoomed in.
+      if (cell.gx < viewMinX || cell.gx > viewMaxX) continue;
+      if (cell.gy < viewMinY || cell.gy > viewMaxY) continue;
+      // Max-blend t across contributing nodes using time-varying reach.
+      let t = 0;
+      for (let k = 0; k < cell.rectIdx.length; k += 1) {
+        const idx = cell.rectIdx[k];
+        const reachI = reach[idx];
+        if (reachI <= 0) continue;
+        const d = cell.dist[k];
+        if (d >= reachI) continue;
+        const ti = 1 - d / reachI;
+        if (ti > t) t = ti;
+      }
+      if (t <= 0) continue;
 
-      const edgeFactor = Math.max(0, 1 - t / HALO_NOISE_THRESHOLD);
-
+      const { gx, gy } = cell;
+      // Edge-only noise (gating on t means the core stays clean — exactly
+      // the regression the user flagged previously).
+      const edgeFactor = t < HALO_NOISE_THRESHOLD ? 1 - t / HALO_NOISE_THRESHOLD : 0;
       const nDrop = hash2d(gx + 53, gy + 7);
       const nSize = hash2d(gx + 17, gy + 31);
       const nX = hash2d(gx, gy);
       const nY = hash2d(gx + 91, gy + 19);
 
-      if (edgeFactor > 0 && nDrop > Math.min(1, t / HALO_NOISE_THRESHOLD)) {
-        return;
-      }
+      if (edgeFactor > 0 && nDrop > Math.min(1, t / HALO_NOISE_THRESHOLD)) continue;
 
       const sizeNoiseAmt = HALO_SIZE_NOISE * edgeFactor;
       const sizeMul = 1 - sizeNoiseAmt + nSize * (2 * sizeNoiseAmt);
-      const r = Math.pow(t, HALO_FALLOFF) * HALO_MAX_DOT * sizeMul;
-      if (r < 0.35) return;
+      // Radius in SCREEN px (constant across zoom).
+      const rScreen = Math.pow(t, HALO_FALLOFF) * HALO_MAX_DOT * sizeMul;
+      if (rScreen < 0.35) continue;
+      // Convert back to canvas px — the SVG itself sits inside the React
+      // Flow viewport transform that scales by `zoom`, so dividing here
+      // cancels that out and the final visible radius is rScreen.
+      const rCanvas = rScreen / safeZoom;
 
-      const jitter = HALO_GRID * HALO_POS_JITTER * edgeFactor;
-      const px = gx + (nX * 2 - 1) * jitter;
-      const py = gy + (nY * 2 - 1) * jitter;
+      // Jitter is also a SCREEN-px quantity → divide by zoom for canvas.
+      const jitterCanvas = (HALO_GRID * HALO_POS_JITTER * edgeFactor) / safeZoom;
+      const px = gx + (nX * 2 - 1) * jitterCanvas;
+      const py = gy + (nY * 2 - 1) * jitterCanvas;
 
-      // Truncate to 2 decimals — sub-pixel precision below that is invisible
-      // and keeps the path string shorter / faster to parse.
       const cxStr = (px - svgX).toFixed(2);
       const cyStr = (py - svgY).toFixed(2);
-      const rStr = r.toFixed(2);
-      const dStr = (r * 2).toFixed(2);
-      // Whitespace-safe subpath: a full circle drawn as two semicircular arcs.
-      // Spaces between every token avoid any parser ambiguity at digit/letter
-      // transitions (some Chromium versions are finicky about `0a`-style
-      // contiguous tokens in multi-subpath strings).
+      const rStr = rCanvas.toFixed(2);
+      const dStr = (rCanvas * 2).toFixed(2);
       segments.push(
         `M ${cxStr} ${cyStr} m -${rStr} 0 a ${rStr} ${rStr} 0 1 0 ${dStr} 0 a ${rStr} ${rStr} 0 1 0 -${dStr} 0`,
       );
-    });
-
-    return {
-      svgX,
-      svgY,
-      svgW,
-      svgH,
-      d: segments.join(" "),
-    };
+    }
+    return segments.join(" ");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [positionsKey]);
+  }, [geometry, tickSec]);
 
   if (!domNode) return null;
   const viewport = domNode.querySelector<HTMLElement>(".react-flow__viewport");
   if (!viewport) return null;
-  if (!halo) {
+  if (!geometry) {
     return createPortal(<div aria-hidden style={{ display: "none" }} />, viewport);
   }
 
   return createPortal(
     <svg
       aria-hidden
-      width={halo.svgW}
-      height={halo.svgH}
-      viewBox={`0 0 ${halo.svgW} ${halo.svgH}`}
+      width={geometry.svgW}
+      height={geometry.svgH}
+      viewBox={`0 0 ${geometry.svgW} ${geometry.svgH}`}
       style={{
         position: "absolute",
-        left: halo.svgX,
-        top: halo.svgY,
+        left: geometry.svgX,
+        top: geometry.svgY,
         pointerEvents: "none",
         zIndex: -1,
         display: "block",
       }}
     >
-      <path d={halo.d} fill={HALO_NEON_COLOR} />
+      <path d={pathD} fill={HALO_NEON_COLOR} />
     </svg>,
     viewport,
   );
@@ -751,11 +897,44 @@ function MindMapInner({ projects }: { projects: Project[] }) {
   );
 }
 
+// Bottom-centre zoom indicator. Rendered as a sibling of <ReactFlow> (still
+// inside <ReactFlowProvider>) so it lives outside the viewport's CSS
+// transform — fixed positioning works correctly and the readout doesn't
+// scale with the canvas.
+function ZoomIndicator() {
+  const { zoomIn, zoomOut } = useReactFlow();
+  const zoom = useStore((s) => s.transform[2]);
+  return (
+    <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[1000] flex items-stretch border border-black bg-white text-sm select-none">
+      <button
+        type="button"
+        onClick={() => zoomOut({ duration: 150 })}
+        className="px-3 py-1.5 border-r border-black hover:bg-black hover:text-white transition-colors"
+        aria-label="Zoom out"
+      >
+        −
+      </button>
+      <div className="px-4 py-1.5 min-w-[64px] text-center tabular-nums">
+        {Math.round(zoom * 100)}%
+      </div>
+      <button
+        type="button"
+        onClick={() => zoomIn({ duration: 150 })}
+        className="px-3 py-1.5 border-l border-black hover:bg-black hover:text-white transition-colors"
+        aria-label="Zoom in"
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
 export default function MindMap({ projects }: { projects: Project[] }) {
   return (
     <div className="w-full h-full">
       <ReactFlowProvider>
         <MindMapInner projects={projects} />
+        <ZoomIndicator />
       </ReactFlowProvider>
     </div>
   );
