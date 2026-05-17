@@ -1170,32 +1170,49 @@ function MindMapInner({ projects }: { projects: Project[] }) {
   //     phones in landscape get a comfortable mid-range view.
   //   desktop: clamped to [0.65, 1.1] so huge monitors don't blow up to
   //     close-up zoom and tiny laptops still see the full inner ring.
+  // Track first ever successful focusViewport so we can (a) snap the
+  // initial placement without a 200ms tween (which is what the user
+  // saw as "things visibly sliding into position on load") and (b)
+  // fade the canvas in only AFTER nodes are at their final spots.
+  const firstFocusDoneRef = useRef(false);
+  const [isReady, setIsReady] = useState(false);
+
   const focusViewport = useCallback(() => {
     const state = storeApi.getState();
     const vpW = state.width;
     const vpH = state.height;
     if (!vpW || !vpH) return;
+    const hub = state.nodeLookup.get(HUB_ID);
+    const hubW = hub?.measured?.width ?? 0;
+    const hubH = hub?.measured?.height ?? 0;
+    // Defer the first focus until the hub is actually measured —
+    // otherwise we'd compute a translate with hubW/hubH=0 and the hub
+    // would land at the wrong spot, only to snap again once measurement
+    // arrives (which is exactly the "shifting" the user reported).
+    if (!firstFocusDoneRef.current && (!hubW || !hubH)) return;
+
     const isMobile = vpW < MOBILE_BREAKPOINT;
     const minDim = Math.min(vpW, vpH);
-    const innerRadius = RADIUS.category + 90; // category centre + label slack
+    const innerRadius = RADIUS.category + 90;
     const fitZoom = (0.8 * minDim) / (2 * innerRadius);
     const initialZoom = isMobile
       ? Math.min(0.9, Math.max(0.4, fitZoom))
       : Math.min(1.1, Math.max(0.65, fitZoom));
 
-    // Hub position is its TOP-LEFT corner in canvas coords. Offset the
-    // translate by half the hub's measured box (scaled by zoom) so the
-    // hub's VISUAL CENTRE lands at the viewport centre. If we don't yet
-    // have a measurement, fall back to no offset; the hubMeasureKey
-    // subscription will trigger another focusViewport once measurement
-    // arrives.
-    const hub = state.nodeLookup.get(HUB_ID);
-    const hubW = hub?.measured?.width ?? 0;
-    const hubH = hub?.measured?.height ?? 0;
     const tx = vpW / 2 - (hubW / 2) * initialZoom;
     const ty = vpH / 2 - (hubH / 2) * initialZoom;
 
-    setViewport({ x: tx, y: ty, zoom: initialZoom }, { duration: 200 });
+    const isFirst = !firstFocusDoneRef.current;
+    setViewport(
+      { x: tx, y: ty, zoom: initialZoom },
+      { duration: isFirst ? 0 : 200 },
+    );
+    if (isFirst) {
+      firstFocusDoneRef.current = true;
+      // One animation frame for the viewport transform to actually
+      // commit before we fade the canvas in.
+      requestAnimationFrame(() => setIsReady(true));
+    }
   }, [storeApi, setViewport]);
 
   // Re-centre whenever React Flow's measured container size or the hub
@@ -1266,6 +1283,11 @@ function MindMapInner({ projects }: { projects: Project[] }) {
   return (
     <ProjectMapsContext.Provider value={projectMaps}>
       <HoverContext.Provider value={hoverCtx}>
+        <div
+          className={`w-full h-full transition-opacity duration-300 ease-out ${
+            isReady ? "opacity-100" : "opacity-0"
+          }`}
+        >
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -1287,6 +1309,7 @@ function MindMapInner({ projects }: { projects: Project[] }) {
         >
           <HaloLayer />
         </ReactFlow>
+        </div>
       </HoverContext.Provider>
     </ProjectMapsContext.Provider>
   );
