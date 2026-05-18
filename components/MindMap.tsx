@@ -252,6 +252,12 @@ const ProjectNode = memo(function ProjectNode({ id, data }: NodeProps) {
       ref={ref}
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
+      // Click also clears the hover preview + halo context immediately.
+      // Without this, mobile (no mouseLeave on tap) leaves the popup
+      // stuck on screen for the entire halftone transition → looks
+      // broken. ReactFlow's onNodeClick still fires via event bubbling
+      // — we don't stopPropagation, just tear down our local state.
+      onClick={handleLeave}
       className="relative bg-white border border-black px-7 py-3 text-2xl sm:text-xl sm:px-5 sm:py-2.5 whitespace-nowrap cursor-pointer transition-colors hover:bg-black hover:text-white"
     >
       {label}
