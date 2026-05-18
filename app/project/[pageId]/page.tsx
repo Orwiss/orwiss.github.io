@@ -7,6 +7,7 @@ import {
 } from "@/lib/projectNotion";
 import { PageHeader } from "@/components/notion/PageHeader";
 import { NotionBlocks } from "@/components/notion/Block";
+import { MinLoader } from "@/components/MinLoader";
 
 type Props = {
   params: Promise<{ pageId: string }>;
@@ -40,11 +41,13 @@ export default async function ProjectDetailPage({ params }: Props) {
   }
 
   return (
-    <main className="h-full w-full overflow-y-auto">
-      <PageHeader page={page} />
-      <article className="max-w-3xl mx-auto px-6 pb-24 pt-2">
-        <NotionBlocks blocks={blocks} />
-      </article>
-    </main>
+    <MinLoader minMs={750}>
+      <main className="h-full w-full overflow-y-auto">
+        <PageHeader page={page} />
+        <article className="max-w-3xl mx-auto px-6 pb-24 pt-2">
+          <NotionBlocks blocks={blocks} />
+        </article>
+      </main>
+    </MinLoader>
   );
 }

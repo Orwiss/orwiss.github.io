@@ -7,19 +7,31 @@ import { categories, HUB_LABEL, type Project } from "@/lib/projects";
 export function ListView({ projects }: { projects: Project[] }) {
   return (
     <div className="h-full w-full overflow-y-auto">
-      <div className="max-w-3xl mx-auto px-6 py-20">
+      {/* Headers stay full-width centred at all sizes; only the project
+          list within each category flows into 2 columns on wide
+          viewports. lg: kicks in at 1024px — at that width each column
+          has ~480px for cover + title + meta, comfortably wider than
+          the cover (128px) + label. max-w grows to 6xl so two columns
+          aren't squeezed. */}
+      <div className="max-w-3xl lg:max-w-6xl mx-auto px-6 py-20">
         <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-16">
           {HUB_LABEL}
         </h1>
         {categories.map((cat) => {
-          const inCategory = projects.filter((p) => p.categoryId === cat.id);
+          // Newest year first within each category; projects without a
+          // year sink to the bottom. Array#sort is stable in modern
+          // engines so ties preserve Notion's incoming order.
+          const inCategory = projects
+            .filter((p) => p.categoryId === cat.id)
+            .slice()
+            .sort((a, b) => Number(b.year ?? 0) - Number(a.year ?? 0));
           if (inCategory.length === 0) return null;
           return (
             <section key={cat.id} className="mb-14">
               <h2 className="text-2xl font-semibold tracking-tight border-b border-black pb-2 mb-5">
                 {cat.label}
               </h2>
-              <ul className="flex flex-col">
+              <ul className="grid grid-cols-1 lg:grid-cols-2 lg:gap-x-8">
                 {inCategory.map((p) => (
                   <ProjectRow key={p.id} project={p} />
                 ))}
