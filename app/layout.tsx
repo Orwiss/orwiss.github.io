@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { TransitionProvider } from "@/components/Transition";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,7 +28,13 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="h-full">{children}</body>
+      <body className="h-full">
+        {/* Single TransitionProvider survives all SPA navigations so
+            the halftone overlay is one persistent canvas rather than
+            two short-lived instances (route loading.tsx → MinLoader)
+            that used to remount and visibly jitter. */}
+        <TransitionProvider>{children}</TransitionProvider>
+      </body>
     </html>
   );
 }

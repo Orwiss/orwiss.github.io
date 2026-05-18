@@ -11,7 +11,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "./Transition";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -1165,7 +1165,10 @@ function computePositions(projects: Project[]): Map<string, { x: number; y: numb
 const MOBILE_BREAKPOINT = 768;
 
 function MindMapInner({ projects }: { projects: Project[] }) {
-  const router = useRouter();
+  // Route through the global TransitionProvider so the halftone bloom
+  // covers the click → server fetch → new page reveal as one beat;
+  // raw router.push would snap to the project page instantly.
+  const navigate = useNavigate();
   const { setViewport } = useReactFlow();
   const storeApi = useStoreApi();
   // Subscribe to the React Flow container's measured size — this differs
@@ -1248,10 +1251,10 @@ function MindMapInner({ projects }: { projects: Project[] }) {
     (_event: React.MouseEvent, node: Node) => {
       if (node.id.startsWith(PROJ_PREFIX)) {
         const notionId = node.id.slice(PROJ_PREFIX.length);
-        router.push(`/project/${notionId}`);
+        navigate(`/project/${notionId}`);
       }
     },
-    [router],
+    [navigate],
   );
 
   // Viewport math is driven directly off the viewport size rather than

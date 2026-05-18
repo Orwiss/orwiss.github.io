@@ -1,13 +1,17 @@
 "use client";
 
-import Link from "next/link";
+import { SmoothLink } from "./SmoothLink";
 
 type View = "map" | "list";
 
+// Map/list toggle only changes the search param — same pathname both
+// ways — so SmoothLink/navigate() will short-circuit the halftone
+// transition and just call router.push. The Switcher re-renders the
+// view in place.
 export function ViewToggle({ current }: { current: View }) {
   return (
     <nav className="fixed top-4 right-4 z-[1000] flex gap-1 font-mono text-sm uppercase tracking-wider">
-      <Link
+      <SmoothLink
         href="/"
         className={`px-3 py-1.5 border border-black transition-colors ${
           current === "map"
@@ -16,8 +20,8 @@ export function ViewToggle({ current }: { current: View }) {
         }`}
       >
         map
-      </Link>
-      <Link
+      </SmoothLink>
+      <SmoothLink
         href="/?view=list"
         className={`px-3 py-1.5 border border-black transition-colors ${
           current === "list"
@@ -26,7 +30,7 @@ export function ViewToggle({ current }: { current: View }) {
         }`}
       >
         list
-      </Link>
+      </SmoothLink>
     </nav>
   );
 }

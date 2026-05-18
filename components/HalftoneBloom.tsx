@@ -68,7 +68,11 @@ export function HalftoneBloom({ exiting = false }: { exiting?: boolean } = {}) {
   // so the retreat tween starts from wherever the pulse happened to
   // be, not always from 1 (avoids a visible jump when the user dismisses
   // the loader during the LOW half of the oscillation).
-  const lastBloomRef = useRef(0);
+  // Defaults to 1 so that mounting with exiting=true (e.g. initial
+  // page transition where we want the halftone to "land" at full
+  // then retreat) does not produce a bloom=0 frame before the draw
+  // loop has had a chance to write a real value.
+  const lastBloomRef = useRef(1);
   const exitFromBloomRef = useRef(1);
   useEffect(() => {
     exitingRef.current = exiting;

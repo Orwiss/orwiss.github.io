@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import { SmoothLink } from "./SmoothLink";
 import { categories, HUB_LABEL, type Project } from "@/lib/projects";
 
 export function ListView({ projects }: { projects: Project[] }) {
@@ -48,7 +48,7 @@ function ProjectRow({ project }: { project: Project }) {
   const [coverFailed, setCoverFailed] = useState(false);
   return (
     <li>
-      <Link
+      <SmoothLink
         href={`/project/${project.id}`}
         className="flex items-center gap-4 p-2 -mx-2 hover:bg-[#39FF14] hover:text-black transition-colors group"
       >
@@ -85,7 +85,7 @@ function ProjectRow({ project }: { project: Project }) {
             </div>
           )}
         </div>
-      </Link>
+      </SmoothLink>
     </li>
   );
 }

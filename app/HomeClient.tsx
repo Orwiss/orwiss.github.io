@@ -3,9 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
-import { HalftoneBloom } from "@/components/HalftoneBloom";
 import { ListView } from "@/components/ListView";
-import { MinLoader } from "@/components/MinLoader";
 import { ViewToggle } from "@/components/ViewToggle";
 import type { Project } from "@/lib/projects";
 
@@ -34,16 +32,13 @@ function projectsEqual(a: Project[], b: Project[]) {
   return true;
 }
 
-// Loading fallback while the MindMap chunk downloads. Same halftone
-// bloom as app/loading.tsx so the transition from "route loading" →
-// "chunk loading" → "MindMap fading in" reads as one continuous beat.
+// Loading fallback while the MindMap chunk downloads. Minimal: the
+// global TransitionProvider's halftone is already overlaid on top
+// during the initial arriving phase, so a separate halftone here
+// would just be a second canvas competing for the same space.
 const MindMap = dynamic(() => import("@/components/MindMap"), {
   ssr: false,
-  loading: () => (
-    <div className="relative h-full w-full overflow-hidden">
-      <HalftoneBloom />
-    </div>
-  ),
+  loading: () => <div className="h-full w-full" />,
 });
 
 function Switcher({ projects }: { projects: Project[] }) {
@@ -98,22 +93,14 @@ export default function HomeClient({
 
   return (
     <main className="h-full w-full overflow-hidden relative">
-      {/* MinLoader keeps the halftone bloom on top for at least
-          MIN_MS regardless of how fast the data + chunk load, so the
-          effect is always perceptible. Suspense fallback inside still
-          covers the (rare) case where useSearchParams hasn't settled
-          when the loader fades — same bloom visual, no flash. */}
-      <MinLoader minMs={750}>
-        <Suspense
-          fallback={
-            <div className="relative h-full w-full overflow-hidden">
-              <HalftoneBloom />
-            </div>
-          }
-        >
-          <Switcher projects={projects} />
-        </Suspense>
-      </MinLoader>
+      {/* The global TransitionProvider in app/layout.tsx now owns the
+          halftone overlay. We just render content underneath; the
+          provider handles bloom-in on leave and bloom-out on arrive.
+          Suspense fallback is minimal — useSearchParams normally
+          resolves synchronously on the client. */}
+      <Suspense fallback={<div className="h-full w-full" />}>
+        <Switcher projects={projects} />
+      </Suspense>
     </main>
   );
 }
