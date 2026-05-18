@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ProjectBlock, RichTextItem } from "@/lib/projectNotion";
+import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { RichText, richToPlainText } from "./RichText";
 
 type AnyRecord = Record<string, unknown>;
@@ -242,8 +243,11 @@ function SingleBlock({ block }: { block: ProjectBlock }) {
         <figure className="my-6">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={url}
+            src={optimizedImageUrl(url)}
             alt={caption || ""}
+            // Async decode keeps the main thread free during page paint —
+            // important when several large images mount at once.
+            decoding="async"
             className="w-full block"
             draggable={false}
           />

@@ -9,6 +9,7 @@ import {
 } from "@/lib/projectNotion";
 import { PageHeader } from "@/components/notion/PageHeader";
 import { NotionBlocks } from "@/components/notion/Block";
+import { optimizedImageUrl } from "@/lib/imageOptimize";
 
 // Walk the block tree, collect every image URL we'll end up rendering.
 // Server-side only — used solely to emit <link rel="preload"> hints
@@ -72,11 +73,15 @@ export default async function ProjectDetailPage({ params }: Props) {
   // Stream <link rel="preload" as="image"> hints for every image in
   // the body BEFORE the children render. The browser sees these in the
   // streamed HTML head and begins fetching in parallel — during the
-  // ~1.3s halftone transition the user is already watching, so the
-  // network time is fully hidden. preload() is a no-op on subsequent
-  // calls for the same URL so duplicates are fine.
+  // halftone transition the user is already watching, so the network
+  // time is fully hidden.
+  //
+  // We preload the OPTIMIZED url (the same /_next/image?... the
+  // <img> tag will request) so the preload and the actual img load
+  // collapse into one fetch. Preloading the raw Notion URL would just
+  // download the multi-MB original into a cache nothing else reads.
   for (const url of collectImageUrls(blocks)) {
-    preload(url, { as: "image" });
+    preload(optimizedImageUrl(url), { as: "image" });
   }
 
   return (
