@@ -89,10 +89,29 @@ export function TransitionProvider({ children }: { children: ReactNode }) {
       setPhase("arriving");
     };
 
-    const raf = requestAnimationFrame(() => {
+    let rafId = 0;
+    let retryTimer = 0;
+    let attempt = 0;
+
+    const scanAndAwait = () => {
       if (cancelled) return;
       const imgs = Array.from(document.querySelectorAll("img"));
-      const pending = imgs.filter((img) => Boolean(img.src) && !img.complete);
+      // Skip loading="lazy" — they don't fetch until viewport
+      // intersection so waiting on them would always hit the cap.
+      const pending = imgs.filter(
+        (img) => Boolean(img.src) && !img.complete && img.loading !== "lazy",
+      );
+
+      // SSR streaming / React commit timing can leave us with 0 imgs
+      // on the very first frame after pathname change. Retry a few
+      // times with growing delays so we don't fire transitionToArriving
+      // prematurely on a page that genuinely has images. Empty pages
+      // settle naturally on the final retry.
+      if (pending.length === 0 && attempt < 3) {
+        attempt += 1;
+        retryTimer = window.setTimeout(scanAndAwait, 80 * attempt);
+        return;
+      }
 
       if (pending.length === 0) {
         transitionToArriving();
@@ -109,11 +128,14 @@ export function TransitionProvider({ children }: { children: ReactNode }) {
         img.addEventListener("error", onSettled, { once: true });
       });
       window.setTimeout(transitionToArriving, IMAGE_WAIT_CAP_MS);
-    });
+    };
+
+    rafId = requestAnimationFrame(scanAndAwait);
 
     return () => {
       cancelled = true;
-      cancelAnimationFrame(raf);
+      cancelAnimationFrame(rafId);
+      if (retryTimer) window.clearTimeout(retryTimer);
     };
   }, [pathname]);
 

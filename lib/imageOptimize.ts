@@ -12,8 +12,14 @@
 //   - components/notion/Block.tsx (image block render)
 //   - app/project/[pageId]/page.tsx (preload hints) — same URL on
 //     both sides so the preload + img request collapse into one fetch.
-const DEFAULT_WIDTH = 1200;
-const DEFAULT_QUALITY = 75;
+// Lower than the typical 1200/75 default. Sharp transform time scales
+// non-linearly with target dimensions, and our biggest perceived
+// bottleneck is FIRST-load transform latency (every Notion signed-URL
+// rotation invalidates the cache key). 900px wide covers the
+// max-w-3xl article column at 2× DPR; q=60 keeps the WebP looking
+// clean on photos while shrinking ~30% vs q=75.
+const DEFAULT_WIDTH = 900;
+const DEFAULT_QUALITY = 60;
 
 export function optimizedImageUrl(
   rawUrl: string,

@@ -63,16 +63,40 @@ function groupBlocks(blocks: ProjectBlock[]): GroupedBlock[] {
 }
 
 // === Top-level renderer ===
+//
+// `priorityImageUrls`: Set of URLs the parent has decided count as
+// above-the-fold. Image blocks whose url is in this set render eagerly
+// (and the project page preloads them); everything else renders with
+// loading="lazy" so it doesn't compete for bandwidth on first paint
+// and doesn't block the TransitionProvider's image-await gate.
 
-export function NotionBlocks({ blocks }: { blocks: ProjectBlock[] }) {
+type BlocksProps = {
+  blocks: ProjectBlock[];
+  priorityImageUrls?: Set<string>;
+};
+
+export function NotionBlocks({ blocks, priorityImageUrls }: BlocksProps) {
   const groups = groupBlocks(blocks);
   return (
     <>
       {groups.map((g, i) => {
         if (g.kind === "list") {
-          return <ListGroup key={i} listType={g.listType} items={g.items} />;
+          return (
+            <ListGroup
+              key={i}
+              listType={g.listType}
+              items={g.items}
+              priorityImageUrls={priorityImageUrls}
+            />
+          );
         }
-        return <SingleBlock key={g.block.id} block={g.block} />;
+        return (
+          <SingleBlock
+            key={g.block.id}
+            block={g.block}
+            priorityImageUrls={priorityImageUrls}
+          />
+        );
       })}
     </>
   );
@@ -81,9 +105,11 @@ export function NotionBlocks({ blocks }: { blocks: ProjectBlock[] }) {
 function ListGroup({
   listType,
   items,
+  priorityImageUrls,
 }: {
   listType: "bulleted" | "numbered";
   items: ProjectBlock[];
+  priorityImageUrls?: Set<string>;
 }) {
   const Tag = listType === "bulleted" ? "ul" : "ol";
   const listCls =
@@ -99,7 +125,10 @@ function ListGroup({
             <RichText items={readRich(p)} />
             {item.children && item.children.length > 0 ? (
               <div className="mt-1.5">
-                <NotionBlocks blocks={item.children} />
+                <NotionBlocks
+                  blocks={item.children}
+                  priorityImageUrls={priorityImageUrls}
+                />
               </div>
             ) : null}
           </li>
@@ -111,7 +140,13 @@ function ListGroup({
 
 // === Per-block rendering ===
 
-function SingleBlock({ block }: { block: ProjectBlock }) {
+function SingleBlock({
+  block,
+  priorityImageUrls,
+}: {
+  block: ProjectBlock;
+  priorityImageUrls?: Set<string>;
+}) {
   const p = payload(block);
   const rich = readRich(p);
 
@@ -126,7 +161,7 @@ function SingleBlock({ block }: { block: ProjectBlock }) {
           <RichText items={rich} />
           {block.children && block.children.length > 0 ? (
             <span className="block mt-2 ml-3 border-l border-black/15 pl-3">
-              <NotionBlocks blocks={block.children} />
+              <NotionBlocks blocks={block.children} priorityImageUrls={priorityImageUrls} />
             </span>
           ) : null}
         </p>
@@ -164,7 +199,7 @@ function SingleBlock({ block }: { block: ProjectBlock }) {
             </span>
             {block.children && block.children.length > 0 ? (
               <div className="mt-1.5">
-                <NotionBlocks blocks={block.children} />
+                <NotionBlocks blocks={block.children} priorityImageUrls={priorityImageUrls} />
               </div>
             ) : null}
           </div>
@@ -183,7 +218,7 @@ function SingleBlock({ block }: { block: ProjectBlock }) {
           </summary>
           {block.children && block.children.length > 0 ? (
             <div className="mt-2 ml-4">
-              <NotionBlocks blocks={block.children} />
+              <NotionBlocks blocks={block.children} priorityImageUrls={priorityImageUrls} />
             </div>
           ) : null}
         </details>
@@ -195,7 +230,7 @@ function SingleBlock({ block }: { block: ProjectBlock }) {
           <RichText items={rich} />
           {block.children && block.children.length > 0 ? (
             <div className="mt-2 not-italic">
-              <NotionBlocks blocks={block.children} />
+              <NotionBlocks blocks={block.children} priorityImageUrls={priorityImageUrls} />
             </div>
           ) : null}
         </blockquote>
@@ -214,7 +249,7 @@ function SingleBlock({ block }: { block: ProjectBlock }) {
             <RichText items={rich} />
             {block.children && block.children.length > 0 ? (
               <div className="mt-2">
-                <NotionBlocks blocks={block.children} />
+                <NotionBlocks blocks={block.children} priorityImageUrls={priorityImageUrls} />
               </div>
             ) : null}
           </div>
@@ -239,16 +274,28 @@ function SingleBlock({ block }: { block: ProjectBlock }) {
       const url = readFileUrl(p);
       const caption = richToPlainText((p.caption as RichTextItem[] | undefined) ?? []);
       if (!url) return null;
+      // Above-the-fold images (set by the page server-side) load eagerly
+      // and have their <link rel="preload"> hint streamed; the rest
+      // render with loading="lazy" so the browser defers them until
+      // scroll. TransitionProvider also skips lazy <img> in its
+      // image-await gate, so they never block page reveal.
+      const isPriority = priorityImageUrls?.has(url) ?? false;
       return (
-        <figure className="my-6">
+        <figure className="my-6 select-none">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={optimizedImageUrl(url)}
             alt={caption || ""}
-            // Async decode keeps the main thread free during page paint —
-            // important when several large images mount at once.
             decoding="async"
-            className="w-full block"
+            loading={isPriority ? "eager" : "lazy"}
+            fetchPriority={isPriority ? "high" : "auto"}
+            // pointer-events-none means right-click never lands on the
+            // <img> element itself — the browser falls back to the
+            // parent's default context menu which doesn't include
+            // "Save Image As". Pure CSS so this can stay a server
+            // component (event handlers like onContextMenu would force
+            // "use client" + a hydration cost on every Block).
+            className="w-full block pointer-events-none"
             draggable={false}
           />
           {caption ? (
@@ -381,7 +428,10 @@ function SingleBlock({ block }: { block: ProjectBlock }) {
           {(block.children ?? []).map((col) => (
             <div key={col.id} className="flex-1 min-w-0">
               {col.children && col.children.length > 0 ? (
-                <NotionBlocks blocks={col.children} />
+                <NotionBlocks
+                  blocks={col.children}
+                  priorityImageUrls={priorityImageUrls}
+                />
               ) : null}
             </div>
           ))}
@@ -390,7 +440,7 @@ function SingleBlock({ block }: { block: ProjectBlock }) {
 
     case "column":
       return block.children && block.children.length > 0 ? (
-        <NotionBlocks blocks={block.children} />
+        <NotionBlocks blocks={block.children} priorityImageUrls={priorityImageUrls} />
       ) : null;
 
     case "child_page": {
@@ -416,7 +466,7 @@ function SingleBlock({ block }: { block: ProjectBlock }) {
 
     case "synced_block":
       return block.children && block.children.length > 0 ? (
-        <NotionBlocks blocks={block.children} />
+        <NotionBlocks blocks={block.children} priorityImageUrls={priorityImageUrls} />
       ) : null;
 
     case "link_to_page": {
@@ -479,7 +529,10 @@ function NotionVideo({ block }: { block: ProjectBlock }) {
         playsInline
         disablePictureInPicture
         controlsList="nodownload"
-        className="w-full my-5 block"
+        // pointer-events-none routes right-click to the parent, which
+        // doesn't show the video-specific "Save Video As" menu. CSS-only
+        // so this stays a server component.
+        className="w-full my-5 block pointer-events-none select-none"
         draggable={false}
       >
         Your browser does not support the video tag.

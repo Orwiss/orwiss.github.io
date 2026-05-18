@@ -70,17 +70,24 @@ export default async function ProjectDetailPage({ params }: Props) {
     notFound();
   }
 
-  // Stream <link rel="preload" as="image"> hints for every image in
-  // the body BEFORE the children render. The browser sees these in the
-  // streamed HTML head and begins fetching in parallel — during the
-  // halftone transition the user is already watching, so the network
-  // time is fully hidden.
+  // Only the first PRIORITY_IMAGE_COUNT images get preloaded + render
+  // eagerly. The rest render with loading="lazy" and the TransitionProvider
+  // skips them in its image-await gate, so page reveal only waits on
+  // above-the-fold imagery instead of every image in the document.
   //
   // We preload the OPTIMIZED url (the same /_next/image?... the
   // <img> tag will request) so the preload and the actual img load
-  // collapse into one fetch. Preloading the raw Notion URL would just
-  // download the multi-MB original into a cache nothing else reads.
-  for (const url of collectImageUrls(blocks)) {
+  // collapse into one fetch.
+  const allImageUrls = collectImageUrls(blocks);
+  // 5 covers the common above-fold cases on typical desktop heights
+  // (768px wide article column × ~16:9 image = ~430px tall, so 2-3
+  // visible per fold; with a heading + first paragraph above, 5
+  // leaves headroom for tall screens or portrait images).
+  const PRIORITY_IMAGE_COUNT = 5;
+  const priorityImageUrls = new Set(
+    allImageUrls.slice(0, PRIORITY_IMAGE_COUNT),
+  );
+  for (const url of priorityImageUrls) {
     preload(optimizedImageUrl(url), { as: "image" });
   }
 
@@ -92,7 +99,7 @@ export default async function ProjectDetailPage({ params }: Props) {
     <main className="h-full w-full overflow-y-auto">
       <PageHeader page={page} />
       <article className="max-w-3xl mx-auto px-6 pb-24 pt-2">
-        <NotionBlocks blocks={blocks} />
+        <NotionBlocks blocks={blocks} priorityImageUrls={priorityImageUrls} />
       </article>
     </main>
   );
