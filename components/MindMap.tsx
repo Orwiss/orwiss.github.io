@@ -20,7 +20,6 @@ import {
   useInternalNode,
   useNodesState,
   useEdgesState,
-  useOnViewportChange,
   useReactFlow,
   useStore,
   useStoreApi,
@@ -483,8 +482,6 @@ function smoothNoise2d(x: number, y: number): number {
 }
 
 function HaloLayer() {
-  const domNode = useStore((s) => s.domNode);
-
   // Position fingerprint — React Flow mutates nodeLookup in place, so
   // we need a selector whose OUTPUT changes only when halo-relevant
   // geometry changes (positions + measurements of any node), without
@@ -521,38 +518,28 @@ function HaloLayer() {
   });
 
   const nodeLookup = useStore((s) => s.nodeLookup);
-  // Geometry runs at a SETTLED zoom bucket — only updated when the
-  // viewport stops moving (onEnd of useOnViewportChange). During an
-  // active zoom tween geometry is frozen, which means:
-  //   - Zero geometry rebuilds while the user is zooming → no
-  //     mid-zoom main-thread blocking. (Previously, with 0.05-step
-  //     live buckets, a fast 0.4 → 1.5 zoom would cross ~22
-  //     boundaries and trigger that many rebuilds back-to-back.)
-  //   - Dot positions are canvas-anchored during the tween, so they
-  //     visually scale WITH the viewport — feels like the rest of
-  //     the graph (the nodes zoom too).
-  //   - On settle, ONE rebuild snaps the grid back to its target
-  //     screen-px spacing. With 0.05 buckets this snap is small for
-  //     short zoom gestures; for big jumps it's the price of smooth
-  //     during-zoom motion.
-  const [settledZoomBucket, setSettledZoomBucket] = useState(1);
-  // Seed settled bucket from the current viewport once on mount so the
-  // first geometry build matches the initial zoom (rather than
-  // defaulting to 1.0 and snapping on the user's first interaction).
-  useEffect(() => {
-    const z = storeApi.getState().transform[2];
-    if (z) {
-      const seeded = Math.max(0.001, Math.round(z * 20) / 20);
-      setSettledZoomBucket((prev) => (prev === seeded ? prev : seeded));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  useOnViewportChange({
-    onEnd: (vp) => {
-      const next = Math.max(0.001, Math.round(vp.zoom * 20) / 20);
-      setSettledZoomBucket((prev) => (prev === next ? prev : next));
-    },
-  });
+  // Live zoom bucket subscription (0.05 step). Continuous density
+  // tracking: when the user zooms, geometry rebuilds at each bucket
+  // boundary so visible dot spacing stays at HALO_GRID px. Per-rebuild
+  // cost is small (cells/node is bucket-invariant); the BIG cost that
+  // used to make this prohibitive was the SVG `d` attribute reparse +
+  // rasterization on every rebuild — that's gone in the canvas
+  // renderer below.
+  const zoomBucket = useStore((s) =>
+    Math.max(0.001, Math.round(s.transform[2] * 20) / 20),
+  );
+  // Trigger canvas redraw on transform change (pan / zoom). Bucketed
+  // to integer-px translation and 1% zoom so React renders at most at
+  // visible-motion granularity. Within-bucket changes are sub-pixel
+  // and the user can't see them anyway.
+  const transformKey = useStore(
+    (s) =>
+      `${s.transform[0] | 0},${s.transform[1] | 0},${(s.transform[2] * 100) | 0}`,
+  );
+  // Trigger canvas resize on container resize.
+  const containerSize = useStore(
+    (s) => `${Math.round(s.width)}x${Math.round(s.height)}`,
+  );
   const storeApi = useStoreApi();
 
   // Scratch typed arrays reused across animation ticks. Allocating
@@ -733,7 +720,7 @@ function HaloLayer() {
       // extension the wave can never bulge outward, only carve inward.
       const boundaryAmp = boundaryNoiseAmpForId(id);
       const maxReachCanvas =
-        (fullReachScreen / settledZoomBucket) * HALO_MAX_MUL * (1 + boundaryAmp);
+        (fullReachScreen / zoomBucket) * HALO_MAX_MUL * (1 + boundaryAmp);
       rects.push({
         id,
         cx: node.position.x + w / 2,
@@ -755,7 +742,7 @@ function HaloLayer() {
     // every time the active set grew). Grid stays a single constant
     // value so dot positions are stable across hover transitions.
     const gridScreen = HALO_GRID;
-    const gridCanvas = gridScreen / settledZoomBucket;
+    const gridCanvas = gridScreen / zoomBucket;
 
     // Cell record: position in canvas px + flat per-rect distance list.
     type Cell = {
@@ -832,14 +819,50 @@ function HaloLayer() {
 
     return { rects, cells, svgX, svgY, svgW, svgH, gridCanvas, gridScreen };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [positionsKey, settledZoomBucket, activeSetSig]);
+  }, [positionsKey, zoomBucket, activeSetSig]);
 
   // === Animation pass (per RAF tick) =====================================
-  // Cheap: walk cached cells, compute per-cell t from currently-modulated
-  // per-node reach, apply halftone rules, emit one <path d=...>.
-  const pathD = useMemo(() => {
-    if (!geometry) return "";
-    const { rects, cells, svgX, svgY, gridScreen } = geometry;
+  // Imperative canvas draw. Used to emit one <path d=...> string into an
+  // SVG; switched to canvas because the SVG path-attribute reparse +
+  // rasterization (browser side) was costing ~10-20ms per frame at our
+  // dot counts, which is what made fast zooms feel laggy. Canvas's
+  // per-frame redraw is ~1-2ms regardless of dot count.
+  //
+  // The CANVAS is positioned in screen-pixel space (NOT inside React
+  // Flow's CSS-transformed viewport). Each draw reads the live transform
+  // from the store, maps each cell's canvas-coord (gx, gy) → screen-px,
+  // then draws an arc at the right pixel position. Because we redraw
+  // every frame at native device-pixel density, there is no pixelation
+  // when the user zooms in — same crispness as the previous SVG.
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const state = storeApi.getState();
+    const cssW = state.width;
+    const cssH = state.height;
+    if (!cssW || !cssH) return;
+
+    // Size buffer at native device-pixel density so dots are crisp
+    // regardless of DPR. Idempotent if size hasn't changed.
+    const dpr = window.devicePixelRatio || 1;
+    const wantW = Math.round(cssW * dpr);
+    const wantH = Math.round(cssH * dpr);
+    if (canvas.width !== wantW || canvas.height !== wantH) {
+      canvas.width = wantW;
+      canvas.height = wantH;
+      canvas.style.width = `${cssW}px`;
+      canvas.style.height = `${cssH}px`;
+    }
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Work in CSS-px (DPR baked into the transform), then clear.
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+
+    if (!geometry) return;
+    const { rects, cells, gridScreen } = geometry;
 
     // Read live transform + viewport size once for the whole pass. We
     // don't SUBSCRIBE to transform — the RAF tick already drives this
@@ -860,24 +883,6 @@ function HaloLayer() {
     const viewMaxX = (vpW - tx) / safeZoom + cullMarginCanvas;
     const viewMinY = -ty / safeZoom - cullMarginCanvas;
     const viewMaxY = (vpH - ty) / safeZoom + cullMarginCanvas;
-
-    // KEY DECISION for during-zoom rendering:
-    //   All "canvas-px size" derivations below use settledZoomBucket
-    //   (the frozen bucket from when the viewport last settled), NOT
-    //   the live zoom. That means while the user is zooming, the
-    //   entire halo (cell positions AND dot radii AND jitter AND
-    //   per-node reach) is an immutable canvas-anchored object that
-    //   simply scales through the React Flow viewport transform — the
-    //   same way nodes do. If we used live zoom for radius while cell
-    //   positions stayed frozen, the visible spacing would shrink
-    //   during zoom-out (smaller zoom × frozen canvas spacing) but the
-    //   visible radius would stay constant (= rScreen) — dots overlap
-    //   and the halo collapses into a solid green blob. Using
-    //   settledZoomBucket everywhere makes spacing AND radius scale
-    //   in lockstep, so proportions stay constant during zoom; the
-    //   geometry rebuild on settle snaps back to target screen-px
-    //   sizing.
-    const bucketZoom = Math.max(0.001, settledZoomBucket);
 
     // Per-node reach AND bloom factor for THIS tick.
     //   reach[i]  : canvas-px iso-contour radius — drives WHICH cells
@@ -910,11 +915,16 @@ function HaloLayer() {
       // iso-contour doesn't grow/shrink within geometry's grid during
       // a live zoom — that would make dots appear/disappear randomly
       // through the zoom tween.
-      const baseCanvas = baseScreen / bucketZoom;
+      const baseCanvas = baseScreen / safeZoom;
       reach[i] = baseCanvas * (1 + HALO_AMP * Math.sin(tickSec * r.freq + r.phase));
     }
 
-    const segments: string[] = [];
+    // Batch all dots into one Path2D / fill call. ctx.beginPath + N
+    // ctx.arc + ctx.fill is the canonical fast pattern for many
+    // small same-colour shapes — far cheaper than per-dot fillRect/fill.
+    ctx.fillStyle = HALO_NEON_COLOR;
+    ctx.beginPath();
+    const TWO_PI = Math.PI * 2;
     for (const cell of cells) {
       // Cheap rejection FIRST — skips ~50%+ of cells when zoomed in.
       if (cell.gx < viewMinX || cell.gx > viewMaxX) continue;
@@ -956,26 +966,25 @@ function HaloLayer() {
           t < HUB_NOISE_EDGE_THRESHOLD ? 1 - t / HUB_NOISE_EDGE_THRESHOLD : 0;
         let tEffective = t;
         if (edgeFactor > 0) {
-          // Use bucketZoom for noise sample coords so the wave
+          // Use safeZoom for noise sample coords so the wave
           // pattern is locked to the canvas during a freeze; live zoom
           // would shift the wave through dots mid-tween, which would
           // shimmer instead of scaling cleanly.
-          const nx = (gx * bucketZoom) / HUB_NOISE_WAVELENGTH + tickSec * HUB_NOISE_DRIFT;
-          const ny = (gy * bucketZoom) / HUB_NOISE_WAVELENGTH - tickSec * HUB_NOISE_DRIFT * 0.6;
+          const nx = (gx * safeZoom) / HUB_NOISE_WAVELENGTH + tickSec * HUB_NOISE_DRIFT;
+          const ny = (gy * safeZoom) / HUB_NOISE_WAVELENGTH - tickSec * HUB_NOISE_DRIFT * 0.6;
           const noise = smoothNoise2d(nx, ny);
           tEffective = t + (noise - 0.5) * 2 * HUB_BOUNDARY_NOISE_AMP * edgeFactor;
           if (tEffective <= 0) continue;
         }
         const rScreen = Math.pow(tEffective, HALO_FALLOFF) * HALO_MAX_DOT;
         if (rScreen < 0.35) continue;
-        const rCanvas = rScreen / bucketZoom;
-        const cx = gx - svgX;
-        const cy = gy - svgY;
-        const r = rCanvas;
-        const d2 = r * 2;
-        segments.push(
-          `M ${cx} ${cy} m -${r} 0 a ${r} ${r} 0 1 0 ${d2} 0 a ${r} ${r} 0 1 0 -${d2} 0`,
-        );
+        // Map canvas-coord cell centre → screen-px and draw arc directly
+        // at the screen-px radius. No CSS transform on the canvas means
+        // no pixelation when the user zooms in.
+        const screenX = gx * safeZoom + tx;
+        const screenY = gy * safeZoom + ty;
+        ctx.moveTo(screenX + rScreen, screenY);
+        ctx.arc(screenX, screenY, rScreen, 0, TWO_PI);
         continue;
       }
 
@@ -993,57 +1002,34 @@ function HaloLayer() {
       const sizeMul = 1 - sizeNoiseAmt + nSize * (2 * sizeNoiseAmt);
       const rScreen = Math.pow(t, HALO_FALLOFF) * HALO_MAX_DOT * sizeMul;
       if (rScreen < 0.35) continue;
-      // Radius locked to settled bucket — see bucketZoom comment above.
-      const rCanvas = rScreen / bucketZoom;
 
-      // Jitter likewise tied to settled bucket so the offset is a
-      // constant fraction of the grid cell spacing.
-      const jitterCanvas = (gridScreen * HALO_POS_JITTER * edgeFactor) / bucketZoom;
+      // Jitter offset, kept as a constant SCREEN-px fraction of the
+      // grid cell spacing (divide by safeZoom converts back to canvas
+      // because gx/gy are canvas coords).
+      const jitterCanvas = (gridScreen * HALO_POS_JITTER * edgeFactor) / safeZoom;
       const px = gx + (nX * 2 - 1) * jitterCanvas;
       const py = gy + (nY * 2 - 1) * jitterCanvas;
 
-      // Skip .toFixed: default Number→String is faster (no rounding +
-      // no string-builder dance under the hood) and SVG path parsing
-      // is happy with the extra digits. Eliminates 4 toFixed calls per
-      // visible cell — at 5000 cells × 30fps that was ~600k toFixed
-      // invocations per second.
-      const cx = px - svgX;
-      const cy = py - svgY;
-      const r = rCanvas;
-      const d2 = r * 2;
-      segments.push(
-        `M ${cx} ${cy} m -${r} 0 a ${r} ${r} 0 1 0 ${d2} 0 a ${r} ${r} 0 1 0 -${d2} 0`,
-      );
+      // Map jittered canvas position → screen-px and queue arc.
+      const screenX = px * safeZoom + tx;
+      const screenY = py * safeZoom + ty;
+      ctx.moveTo(screenX + rScreen, screenY);
+      ctx.arc(screenX, screenY, rScreen, 0, TWO_PI);
     }
-    return segments.join(" ");
+    ctx.fill();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [geometry, tickSec]);
+  }, [geometry, tickSec, transformKey, containerSize]);
 
-  if (!domNode) return null;
-  const viewport = domNode.querySelector<HTMLElement>(".react-flow__viewport");
-  if (!viewport) return null;
-  if (!geometry) {
-    return createPortal(<div aria-hidden style={{ display: "none" }} />, viewport);
-  }
-
-  return createPortal(
-    <svg
+  return (
+    <canvas
+      ref={canvasRef}
       aria-hidden
-      width={geometry.svgW}
-      height={geometry.svgH}
-      viewBox={`0 0 ${geometry.svgW} ${geometry.svgH}`}
       style={{
         position: "absolute",
-        left: geometry.svgX,
-        top: geometry.svgY,
+        inset: 0,
         pointerEvents: "none",
-        zIndex: -1,
-        display: "block",
       }}
-    >
-      <path d={pathD} fill={HALO_NEON_COLOR} />
-    </svg>,
-    viewport,
+    />
   );
 }
 
@@ -1396,10 +1382,16 @@ function MindMapInner({ projects }: { projects: Project[] }) {
       <HoverSetterContext.Provider value={setHoveredId}>
         <HoverStateContext.Provider value={hoverState}>
         <div
-          className={`w-full h-full transition-opacity duration-300 ease-out ${
+          className={`relative w-full h-full transition-opacity duration-300 ease-out ${
             isReady ? "opacity-100" : "opacity-0"
           }`}
         >
+        {/* Canvas paints first (DOM order) → halo sits behind React Flow's
+            nodes + edges without any z-index gymnastics. HaloLayer lives
+            outside the React Flow viewport's CSS transform so its pixels
+            are never CSS-stretched — that was the cause of the previous
+            canvas-attempt's pixelation when zoomed in. */}
+        <HaloLayer />
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -1418,9 +1410,7 @@ function MindMapInner({ projects }: { projects: Project[] }) {
           nodesConnectable={false}
           proOptions={{ hideAttribution: true }}
           style={{ background: "transparent" }}
-        >
-          <HaloLayer />
-        </ReactFlow>
+        />
         </div>
         </HoverStateContext.Provider>
       </HoverSetterContext.Provider>
