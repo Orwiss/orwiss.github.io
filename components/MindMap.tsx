@@ -2,6 +2,7 @@
 
 import {
   createContext,
+  memo,
   useCallback,
   useContext,
   useEffect,
@@ -19,6 +20,7 @@ import {
   useInternalNode,
   useNodesState,
   useEdgesState,
+  useOnViewportChange,
   useReactFlow,
   useStore,
   useStoreApi,
@@ -49,12 +51,12 @@ const CATEGORY_WEIGHT_PAD = 3;
 
 // === Custom node components ===
 
-function HubNode({ data }: NodeProps) {
-  // Hub is the default-state halo anchor. Hovering it is semantically the
-  // same as the empty/default state, so we explicitly assert HUB_ID on
-  // enter (covers the case where the cursor enters hub from a category /
-  // project hover without crossing dead space first).
-  const { setHovered } = useContext(HoverContext);
+const HubNode = memo(function HubNode({ data }: NodeProps) {
+  // Hub is the default-state halo anchor. Hovering it is semantically
+  // the same as the empty/default state, so we explicitly assert
+  // HUB_ID on enter (covers the case where the cursor enters hub from
+  // a category / project hover without crossing dead space first).
+  const setHovered = useContext(HoverSetterContext);
   return (
     <div
       onMouseEnter={() => setHovered(HUB_ID)}
@@ -65,10 +67,10 @@ function HubNode({ data }: NodeProps) {
       <HiddenHandles />
     </div>
   );
-}
+});
 
-function CategoryNode({ id, data }: NodeProps) {
-  const { setHovered } = useContext(HoverContext);
+const CategoryNode = memo(function CategoryNode({ id, data }: NodeProps) {
+  const setHovered = useContext(HoverSetterContext);
   return (
     <div
       onMouseEnter={() => setHovered(id)}
@@ -79,7 +81,7 @@ function CategoryNode({ id, data }: NodeProps) {
       <HiddenHandles />
     </div>
   );
-}
+});
 
 // Hover preview dimensions (used for viewport-edge fitting math).
 // Width comes from w-[26rem] = 416px. Height is image (aspect-video on a
@@ -159,19 +161,29 @@ function hashString(str: string): number {
 // reach interpolation. Keeping it in context means nodes don't have to
 // know about HaloLayer's internals, and HaloLayer doesn't have to drill
 // hover handlers through React Flow's nodeTypes plumbing.
-type HoverCtx = {
+// Hover plumbing is split into TWO contexts on purpose:
+//   - HoverSetterContext exposes only the setter. React's useState
+//     setter is reference-stable for the component's lifetime, so the
+//     context value never changes → node consumers re-render zero
+//     times when hover state moves around.
+//   - HoverStateContext carries the actual hovered / dragging ids and
+//     re-renders only its consumer (HaloLayer), not the 28+ nodes.
+// Combined context (previous shape) churned the value object every
+// hover change and cascaded a re-render through every node.
+type HoverState = {
   hoveredId: string | null;
   // Set independently by React Flow's drag lifecycle; takes precedence
   // over hoveredId so that fast cursor motion outpacing the dragged
   // node (which fires mouseLeave → clears hoveredId) doesn't strip the
   // halo from the node the user is actively manipulating.
   draggingId: string | null;
-  setHovered: (id: string | null) => void;
 };
-const HoverContext = createContext<HoverCtx>({
+const HoverSetterContext = createContext<(id: string | null) => void>(
+  () => {},
+);
+const HoverStateContext = createContext<HoverState>({
   hoveredId: null,
   draggingId: null,
-  setHovered: () => {},
 });
 
 // Static lookups derived from the Notion-fed projects list. categoryProjects
@@ -187,14 +199,14 @@ const ProjectMapsContext = createContext<ProjectMapsCtx>({
   categoryProjects: new Map(),
 });
 
-function ProjectNode({ id, data }: NodeProps) {
+const ProjectNode = memo(function ProjectNode({ id, data }: NodeProps) {
   const [hovered, setHovered] = useState(false);
   const [coverFailed, setCoverFailed] = useState(false);
   const [popupPos, setPopupPos] = useState<{ top: number; left: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const notionId = (data.notionId as string | undefined) ?? "";
   const label = String(data.label);
-  const { setHovered: setHoveredCtx } = useContext(HoverContext);
+  const setHoveredCtx = useContext(HoverSetterContext);
 
   // Compute popup placement at hover time. We render via a portal to
   // document.body (see below) so the popup escapes React Flow's transform tree
@@ -274,7 +286,7 @@ function ProjectNode({ id, data }: NodeProps) {
         : null}
     </div>
   );
-}
+});
 
 // React Flow needs handles to anchor edges; rendered invisible at node center.
 function HiddenHandles() {
@@ -473,30 +485,84 @@ function smoothNoise2d(x: number, y: number): number {
 function HaloLayer() {
   const domNode = useStore((s) => s.domNode);
 
-  // Position fingerprint — see comment above. React Flow mutates the
-  // nodeLookup Map in place, so we must derive a string that changes
-  // when geometry changes (and only then). Includes hub + categories +
-  // projects since all node kinds are now halo-eligible.
+  // Position fingerprint — React Flow mutates nodeLookup in place, so
+  // we need a selector whose OUTPUT changes only when halo-relevant
+  // geometry changes (positions + measurements of any node), without
+  // forcing a re-render on every store tick.
+  //
+  // Implementation is a numeric hash:
+  //   - zero string allocation per tick (was 28+ template strings,
+  //     plus an array, plus sort, plus a join → significant churn on
+  //     every drag / pan / selection / etc.)
+  //   - Map iteration is insertion-order stable in modern engines, so
+  //     no sort is needed for a stable fingerprint
+  //   - the hash combines x/y/w/h via FNV-like rolling so any change
+  //     to any field flips the value
+  // The id is NOT folded in (constant per node anyway). Insertion
+  // order changes would change the hash, but that only happens when
+  // the actual node set changes — which IS a geometry change we want
+  // to redetect, so the behaviour is correct.
   const positionsKey = useStore((s) => {
-    const parts: string[] = [];
-    s.nodeLookup.forEach((node, id) => {
+    let h = 2166136261;
+    s.nodeLookup.forEach((node) => {
       const w = node.measured?.width;
-      const h = node.measured?.height;
-      if (!w || !h) return;
-      parts.push(
-        `${id}:${Math.round(node.position.x * 2)},${Math.round(node.position.y * 2)},${Math.round(w * 2)},${Math.round(h * 2)}`,
-      );
+      const ht = node.measured?.height;
+      if (!w || !ht) return;
+      h ^= ((node.position.x * 2) | 0) + 0x9e3779b9;
+      h = Math.imul(h, 16777619);
+      h ^= ((node.position.y * 2) | 0) + 0x9e3779b9;
+      h = Math.imul(h, 16777619);
+      h ^= ((w * 2) | 0) + 0x9e3779b9;
+      h = Math.imul(h, 16777619);
+      h ^= ((ht * 2) | 0) + 0x9e3779b9;
+      h = Math.imul(h, 16777619);
     });
-    return parts.sort().join("|");
+    return h >>> 0;
   });
 
   const nodeLookup = useStore((s) => s.nodeLookup);
-  const zoomBucket = useStore((s) =>
-    Math.max(0.001, Math.round(s.transform[2] * 5) / 5),
-  );
+  // Geometry runs at a SETTLED zoom bucket — only updated when the
+  // viewport stops moving (onEnd of useOnViewportChange). During an
+  // active zoom tween geometry is frozen, which means:
+  //   - Zero geometry rebuilds while the user is zooming → no
+  //     mid-zoom main-thread blocking. (Previously, with 0.05-step
+  //     live buckets, a fast 0.4 → 1.5 zoom would cross ~22
+  //     boundaries and trigger that many rebuilds back-to-back.)
+  //   - Dot positions are canvas-anchored during the tween, so they
+  //     visually scale WITH the viewport — feels like the rest of
+  //     the graph (the nodes zoom too).
+  //   - On settle, ONE rebuild snaps the grid back to its target
+  //     screen-px spacing. With 0.05 buckets this snap is small for
+  //     short zoom gestures; for big jumps it's the price of smooth
+  //     during-zoom motion.
+  const [settledZoomBucket, setSettledZoomBucket] = useState(1);
+  // Seed settled bucket from the current viewport once on mount so the
+  // first geometry build matches the initial zoom (rather than
+  // defaulting to 1.0 and snapping on the user's first interaction).
+  useEffect(() => {
+    const z = storeApi.getState().transform[2];
+    if (z) {
+      const seeded = Math.max(0.001, Math.round(z * 20) / 20);
+      setSettledZoomBucket((prev) => (prev === seeded ? prev : seeded));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useOnViewportChange({
+    onEnd: (vp) => {
+      const next = Math.max(0.001, Math.round(vp.zoom * 20) / 20);
+      setSettledZoomBucket((prev) => (prev === next ? prev : next));
+    },
+  });
   const storeApi = useStoreApi();
 
-  const { hoveredId, draggingId } = useContext(HoverContext);
+  // Scratch typed arrays reused across animation ticks. Allocating
+  // fresh Float32Arrays per frame was small but constant GC pressure
+  // (60 typed-array allocs/sec at 30fps). Grow only when the active
+  // rect count exceeds capacity; never shrink.
+  const reachScratchRef = useRef<Float32Array>(new Float32Array(0));
+  const bloomScratchRef = useRef<Float32Array>(new Float32Array(0));
+
+  const { hoveredId, draggingId } = useContext(HoverStateContext);
   const { projectCategory, categoryProjects } = useContext(ProjectMapsContext);
 
   // === Reach state ======================================================
@@ -667,7 +733,7 @@ function HaloLayer() {
       // extension the wave can never bulge outward, only carve inward.
       const boundaryAmp = boundaryNoiseAmpForId(id);
       const maxReachCanvas =
-        (fullReachScreen / zoomBucket) * HALO_MAX_MUL * (1 + boundaryAmp);
+        (fullReachScreen / settledZoomBucket) * HALO_MAX_MUL * (1 + boundaryAmp);
       rects.push({
         id,
         cx: node.position.x + w / 2,
@@ -683,7 +749,13 @@ function HaloLayer() {
     }
     if (rects.length === 0) return null;
 
-    const gridCanvas = HALO_GRID / zoomBucket;
+    // NOTE: previously tried scaling gridScreen with the active rect
+    // count to shrink cell count during multi-halo blooms — that
+    // caused a visible snap (dots jumping to new grid positions
+    // every time the active set grew). Grid stays a single constant
+    // value so dot positions are stable across hover transitions.
+    const gridScreen = HALO_GRID;
+    const gridCanvas = gridScreen / settledZoomBucket;
 
     // Cell record: position in canvas px + flat per-rect distance list.
     type Cell = {
@@ -758,16 +830,16 @@ function HaloLayer() {
     const svgW = Math.ceil((worldMaxX - svgX) / gridCanvas) * gridCanvas;
     const svgH = Math.ceil((worldMaxY - svgY) / gridCanvas) * gridCanvas;
 
-    return { rects, cells, svgX, svgY, svgW, svgH, gridCanvas };
+    return { rects, cells, svgX, svgY, svgW, svgH, gridCanvas, gridScreen };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [positionsKey, zoomBucket, activeSetSig]);
+  }, [positionsKey, settledZoomBucket, activeSetSig]);
 
   // === Animation pass (per RAF tick) =====================================
   // Cheap: walk cached cells, compute per-cell t from currently-modulated
   // per-node reach, apply halftone rules, emit one <path d=...>.
   const pathD = useMemo(() => {
     if (!geometry) return "";
-    const { rects, cells, svgX, svgY } = geometry;
+    const { rects, cells, svgX, svgY, gridScreen } = geometry;
 
     // Read live transform + viewport size once for the whole pass. We
     // don't SUBSCRIBE to transform — the RAF tick already drives this
@@ -789,22 +861,42 @@ function HaloLayer() {
     const viewMinY = -ty / safeZoom - cullMarginCanvas;
     const viewMaxY = (vpH - ty) / safeZoom + cullMarginCanvas;
 
+    // KEY DECISION for during-zoom rendering:
+    //   All "canvas-px size" derivations below use settledZoomBucket
+    //   (the frozen bucket from when the viewport last settled), NOT
+    //   the live zoom. That means while the user is zooming, the
+    //   entire halo (cell positions AND dot radii AND jitter AND
+    //   per-node reach) is an immutable canvas-anchored object that
+    //   simply scales through the React Flow viewport transform — the
+    //   same way nodes do. If we used live zoom for radius while cell
+    //   positions stayed frozen, the visible spacing would shrink
+    //   during zoom-out (smaller zoom × frozen canvas spacing) but the
+    //   visible radius would stay constant (= rScreen) — dots overlap
+    //   and the halo collapses into a solid green blob. Using
+    //   settledZoomBucket everywhere makes spacing AND radius scale
+    //   in lockstep, so proportions stay constant during zoom; the
+    //   geometry rebuild on settle snaps back to target screen-px
+    //   sizing.
+    const bucketZoom = Math.max(0.001, settledZoomBucket);
+
     // Per-node reach AND bloom factor for THIS tick.
     //   reach[i]  : canvas-px iso-contour radius — drives WHICH cells
     //               are inside the halo at all (max-blend below).
-    //   bloom[i]  : 0..1 bloom progress = currentBase / fullReach. At
-    //               bloom-in start this is near 0, so even cells with
-    //               t≈1 from the iso formula get scaled to sub-pixel
-    //               dots → effectively invisible. As bloom proceeds the
-    //               iso-contour expands AND every dot grows from tiny
-    //               → full-size, which is what reads as "emerging from
-    //               the node center" instead of "a full-size patch
-    //               appearing instantly".
+    //   bloom[i]  : 0..1 bloom progress = currentBase / fullReach.
     //   Steady state: bloom = 1 so this is a no-op overlay on the
     //   breathing modulation we already had.
     const currentReach = currentReachRef.current;
-    const reach = new Float32Array(rects.length);
-    const bloom = new Float32Array(rects.length);
+    // Reuse scratch buffers; grow if a larger active set arrived.
+    let reach = reachScratchRef.current;
+    let bloom = bloomScratchRef.current;
+    if (reach.length < rects.length) {
+      reach = new Float32Array(rects.length);
+      reachScratchRef.current = reach;
+    }
+    if (bloom.length < rects.length) {
+      bloom = new Float32Array(rects.length);
+      bloomScratchRef.current = bloom;
+    }
     for (let i = 0; i < rects.length; i += 1) {
       const r = rects[i];
       const baseScreen = currentReach.get(r.id) ?? 0;
@@ -814,7 +906,11 @@ function HaloLayer() {
         continue;
       }
       bloom[i] = baseScreen >= r.fullReachScreen ? 1 : baseScreen / r.fullReachScreen;
-      const baseCanvas = baseScreen / safeZoom;
+      // Reach in canvas px is locked to settled bucket so the
+      // iso-contour doesn't grow/shrink within geometry's grid during
+      // a live zoom — that would make dots appear/disappear randomly
+      // through the zoom tween.
+      const baseCanvas = baseScreen / bucketZoom;
       reach[i] = baseCanvas * (1 + HALO_AMP * Math.sin(tickSec * r.freq + r.phase));
     }
 
@@ -860,21 +956,25 @@ function HaloLayer() {
           t < HUB_NOISE_EDGE_THRESHOLD ? 1 - t / HUB_NOISE_EDGE_THRESHOLD : 0;
         let tEffective = t;
         if (edgeFactor > 0) {
-          const nx = (gx * safeZoom) / HUB_NOISE_WAVELENGTH + tickSec * HUB_NOISE_DRIFT;
-          const ny = (gy * safeZoom) / HUB_NOISE_WAVELENGTH - tickSec * HUB_NOISE_DRIFT * 0.6;
+          // Use bucketZoom for noise sample coords so the wave
+          // pattern is locked to the canvas during a freeze; live zoom
+          // would shift the wave through dots mid-tween, which would
+          // shimmer instead of scaling cleanly.
+          const nx = (gx * bucketZoom) / HUB_NOISE_WAVELENGTH + tickSec * HUB_NOISE_DRIFT;
+          const ny = (gy * bucketZoom) / HUB_NOISE_WAVELENGTH - tickSec * HUB_NOISE_DRIFT * 0.6;
           const noise = smoothNoise2d(nx, ny);
           tEffective = t + (noise - 0.5) * 2 * HUB_BOUNDARY_NOISE_AMP * edgeFactor;
           if (tEffective <= 0) continue;
         }
         const rScreen = Math.pow(tEffective, HALO_FALLOFF) * HALO_MAX_DOT;
         if (rScreen < 0.35) continue;
-        const rCanvas = rScreen / safeZoom;
-        const cxStr = (gx - svgX).toFixed(2);
-        const cyStr = (gy - svgY).toFixed(2);
-        const rStr = rCanvas.toFixed(2);
-        const dStr = (rCanvas * 2).toFixed(2);
+        const rCanvas = rScreen / bucketZoom;
+        const cx = gx - svgX;
+        const cy = gy - svgY;
+        const r = rCanvas;
+        const d2 = r * 2;
         segments.push(
-          `M ${cxStr} ${cyStr} m -${rStr} 0 a ${rStr} ${rStr} 0 1 0 ${dStr} 0 a ${rStr} ${rStr} 0 1 0 -${dStr} 0`,
+          `M ${cx} ${cy} m -${r} 0 a ${r} ${r} 0 1 0 ${d2} 0 a ${r} ${r} 0 1 0 -${d2} 0`,
         );
         continue;
       }
@@ -893,18 +993,26 @@ function HaloLayer() {
       const sizeMul = 1 - sizeNoiseAmt + nSize * (2 * sizeNoiseAmt);
       const rScreen = Math.pow(t, HALO_FALLOFF) * HALO_MAX_DOT * sizeMul;
       if (rScreen < 0.35) continue;
-      const rCanvas = rScreen / safeZoom;
+      // Radius locked to settled bucket — see bucketZoom comment above.
+      const rCanvas = rScreen / bucketZoom;
 
-      const jitterCanvas = (HALO_GRID * HALO_POS_JITTER * edgeFactor) / safeZoom;
+      // Jitter likewise tied to settled bucket so the offset is a
+      // constant fraction of the grid cell spacing.
+      const jitterCanvas = (gridScreen * HALO_POS_JITTER * edgeFactor) / bucketZoom;
       const px = gx + (nX * 2 - 1) * jitterCanvas;
       const py = gy + (nY * 2 - 1) * jitterCanvas;
 
-      const cxStr = (px - svgX).toFixed(2);
-      const cyStr = (py - svgY).toFixed(2);
-      const rStr = rCanvas.toFixed(2);
-      const dStr = (rCanvas * 2).toFixed(2);
+      // Skip .toFixed: default Number→String is faster (no rounding +
+      // no string-builder dance under the hood) and SVG path parsing
+      // is happy with the extra digits. Eliminates 4 toFixed calls per
+      // visible cell — at 5000 cells × 30fps that was ~600k toFixed
+      // invocations per second.
+      const cx = px - svgX;
+      const cy = py - svgY;
+      const r = rCanvas;
+      const d2 = r * 2;
       segments.push(
-        `M ${cxStr} ${cyStr} m -${rStr} 0 a ${rStr} ${rStr} 0 1 0 ${dStr} 0 a ${rStr} ${rStr} 0 1 0 -${dStr} 0`,
+        `M ${cx} ${cy} m -${r} 0 a ${r} ${r} 0 1 0 ${d2} 0 a ${r} ${r} 0 1 0 -${d2} 0`,
       );
     }
     return segments.join(" ");
@@ -1132,8 +1240,11 @@ function MindMapInner({ projects }: { projects: Project[] }) {
   // makes the cursor leave the node's DOM mid-gesture and clear
   // hoveredId) still keeps the halo lit on the manipulated node.
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const hoverCtx = useMemo<HoverCtx>(
-    () => ({ hoveredId, draggingId, setHovered: setHoveredId }),
+  // Only the state pair is memoized — `setHoveredId` is reference-stable
+  // by React's useState contract, so it's passed straight to its own
+  // context provider with no wrapper that would force re-renders.
+  const hoverState = useMemo<HoverState>(
+    () => ({ hoveredId, draggingId }),
     [hoveredId, draggingId],
   );
 
@@ -1282,7 +1393,8 @@ function MindMapInner({ projects }: { projects: Project[] }) {
 
   return (
     <ProjectMapsContext.Provider value={projectMaps}>
-      <HoverContext.Provider value={hoverCtx}>
+      <HoverSetterContext.Provider value={setHoveredId}>
+        <HoverStateContext.Provider value={hoverState}>
         <div
           className={`w-full h-full transition-opacity duration-300 ease-out ${
             isReady ? "opacity-100" : "opacity-0"
@@ -1310,7 +1422,8 @@ function MindMapInner({ projects }: { projects: Project[] }) {
           <HaloLayer />
         </ReactFlow>
         </div>
-      </HoverContext.Provider>
+        </HoverStateContext.Provider>
+      </HoverSetterContext.Provider>
     </ProjectMapsContext.Provider>
   );
 }
