@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { TransitionProvider } from "@/components/Transition";
+import { ContactButton } from "@/components/ContactButton";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,6 +35,11 @@ export default function RootLayout({
             two short-lived instances (route loading.tsx → MinLoader)
             that used to remount and visibly jitter. */}
         <TransitionProvider>{children}</TransitionProvider>
+        {/* ContactButton is a sibling of TransitionProvider so it's
+            always available across pages. z-1001 keeps it above page
+            content but BELOW the halftone overlay (z-2000), which
+            covers it during route transitions like everything else. */}
+        <ContactButton />
       </body>
     </html>
   );

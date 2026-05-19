@@ -201,7 +201,15 @@ const ProjectMapsContext = createContext<ProjectMapsCtx>({
 const ProjectNode = memo(function ProjectNode({ id, data }: NodeProps) {
   const [hovered, setHovered] = useState(false);
   const [coverFailed, setCoverFailed] = useState(false);
-  const [popupPos, setPopupPos] = useState<{ top: number; left: number } | null>(null);
+  // placeAbove is tracked alongside top/left so the preview can render
+  // its heavy underline on the side that POINTS AT the node — bottom of
+  // the popup when the popup sits above the node, top of the popup when
+  // it sits below.
+  const [popupPos, setPopupPos] = useState<{
+    top: number;
+    left: number;
+    placeAbove: boolean;
+  } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const notionId = (data.notionId as string | undefined) ?? "";
   const label = String(data.label);
@@ -236,7 +244,7 @@ const ProjectNode = memo(function ProjectNode({ id, data }: NodeProps) {
       Math.min(window.innerWidth - VIEWPORT_MARGIN - PREVIEW_WIDTH, left),
     );
 
-    setPopupPos({ top, left });
+    setPopupPos({ top, left, placeAbove });
     setHovered(true);
   };
 
@@ -265,23 +273,37 @@ const ProjectNode = memo(function ProjectNode({ id, data }: NodeProps) {
       {hovered && notionId && popupPos && typeof document !== "undefined"
         ? createPortal(
             <div
-              className="fixed z-[10000] pointer-events-none border border-black bg-white p-3 w-[26rem] text-black shadow-[0_4px_0_0_#000]"
-              style={{ top: `${popupPos.top}px`, left: `${popupPos.left}px` }}
+              className="fixed z-[10000] pointer-events-none border border-black bg-white p-3 w-[26rem] text-black"
+              style={{
+                top: `${popupPos.top}px`,
+                left: `${popupPos.left}px`,
+                // Heavy underline points TOWARD the node: bottom when
+                // popup sits above the node, top when popup sits below.
+                boxShadow: popupPos.placeAbove
+                  ? "0 4px 0 0 #000"
+                  : "0 -4px 0 0 #000",
+              }}
             >
-              {!coverFailed ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={`/api/notion/cover/${notionId}`}
-                  alt=""
-                  className="w-full aspect-video object-cover block"
-                  draggable={false}
-                  onError={() => setCoverFailed(true)}
-                />
-              ) : (
-                <div className="w-full aspect-video bg-black/[0.05] flex items-center justify-center">
-                  <span className="text-[1.2rem] opacity-50 font-mono">no cover</span>
-                </div>
-              )}
+              {/* Cover wrapper enforces the 16:9 frame; the <img>
+                  fills it absolutely with object-cover so the image
+                  is centre-cropped to span the full frame regardless
+                  of its native aspect ratio. */}
+              <div className="relative w-full aspect-video overflow-hidden">
+                {!coverFailed ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={`/api/notion/cover/${notionId}`}
+                    alt=""
+                    className="absolute inset-0 w-full h-full object-cover object-center block"
+                    draggable={false}
+                    onError={() => setCoverFailed(true)}
+                  />
+                ) : (
+                  <div className="absolute inset-0 bg-black/[0.05] flex items-center justify-center">
+                    <span className="text-[1.2rem] opacity-50 font-mono">no cover</span>
+                  </div>
+                )}
+              </div>
               <p className="mt-3 text-[1.4rem] font-semibold leading-tight break-keep whitespace-normal">
                 {label}
               </p>

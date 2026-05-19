@@ -217,8 +217,15 @@ export function TransitionProvider({ children }: { children: ReactNode }) {
       {showOverlay && (
         <div
           aria-hidden
-          className="fixed inset-0 z-[2000]"
-          style={{ pointerEvents: overlayExiting ? "none" : "auto" }}
+          // pointer-events: none ALWAYS — overlay is purely visual.
+          // Previously this was "auto" during the leaving phase to
+          // intentionally block clicks during a transition, but
+          // leaving extends through image-await (up to several
+          // seconds for image-heavy pages), so it silently swallowed
+          // clicks to chrome like ViewToggle. The rare cost of a
+          // double-fired navigation is much cheaper than a stuck-
+          // looking toggle.
+          className="fixed inset-0 z-[2000] pointer-events-none"
         >
           <HalftoneBloom exiting={overlayExiting} />
         </div>

@@ -50,7 +50,21 @@ type NotionPageCover = {
   };
 };
 
-async function fetchCoverBytesUncached(pageId: string) {
+// Internally we store bytes as base64 because `unstable_cache`
+// serializes its return value to JSON between invocations. A raw
+// Uint8Array survives the FIRST call (in-process, identity intact)
+// but on cache hits it comes back as a plain `{0: byte, 1: byte, …}`
+// object that NextResponse can't transmit as image data — the route
+// returns 200 with garbage and browsers show a broken image. base64
+// round-trips cleanly through JSON.
+type CachedCover = {
+  base64: string;
+  contentType: string;
+};
+
+async function fetchCoverBytesUncached(
+  pageId: string,
+): Promise<CachedCover | null> {
   let coverUrl: string | null = null;
 
   if (shouldProxyNotionInDevelopment()) {
@@ -65,8 +79,9 @@ async function fetchCoverBytesUncached(pageId: string) {
     );
     if (liveResponse?.ok && liveResponse.body) {
       const raw = new Uint8Array(await liveResponse.arrayBuffer());
+      const resized = await resizeCoverToWebp(raw);
       return {
-        body: await resizeCoverToWebp(raw),
+        base64: Buffer.from(resized).toString("base64"),
         contentType: "image/webp",
       };
     }
@@ -88,14 +103,24 @@ async function fetchCoverBytesUncached(pageId: string) {
   const coverResponse = await fetch(coverUrl, { cache: "no-store" });
   if (!coverResponse.ok || !coverResponse.body) return null;
   const raw = new Uint8Array(await coverResponse.arrayBuffer());
+  const resized = await resizeCoverToWebp(raw);
   return {
-    body: await resizeCoverToWebp(raw),
+    base64: Buffer.from(resized).toString("base64"),
     contentType: "image/webp",
   };
 }
 
-export const getCoverBytes = unstable_cache(
+const getCachedCover = unstable_cache(
   fetchCoverBytesUncached,
-  ["notion-cover-bytes"],
+  ["notion-cover-bytes-v2"],
   { revalidate: CACHE_SECONDS, tags: ["notion-cover"] },
 );
+
+// Public API: returns decoded bytes (Uint8Array) ready for NextResponse,
+// hiding the base64 cache encoding from callers.
+export async function getCoverBytes(pageId: string) {
+  const cached = await getCachedCover(pageId);
+  if (!cached) return null;
+  const body = new Uint8Array(Buffer.from(cached.base64, "base64"));
+  return { body, contentType: cached.contentType };
+}
